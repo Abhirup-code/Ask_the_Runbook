@@ -1,0 +1,18 @@
+{"question": "Checkout is throwing 500 errors. What should I check first?", "expect": ["checkout-availability#2"]}
+{"question": "How do I see the current error ratio in Prometheus?", "expect": ["checkout-availability#1"]}
+{"question": "Errors started right after a rollout. How do I roll back?", "expect": ["checkout-availability#2", "checkout-latency#2"]}
+{"question": "Should I find the root cause before mitigating?", "expect": ["checkout-availability#3"]}
+{"question": "Does a page need a postmortem?", "expect": ["checkout-availability#4", "checkout-latency#3"]}
+{"question": "Checkout p95 latency is high. What are the usual causes?", "expect": ["checkout-latency#2"]}
+{"question": "Could CPU limits make checkout slow?", "expect": ["checkout-latency#2"]}
+{"question": "What is the availability objective and the error budget?", "expect": ["slos#0"]}
+{"question": "Why is the SLO 99.5% and not 99.9%?", "expect": ["slos#0"]}
+{"question": "What does a burn rate of 14.4 mean?", "expect": ["slos#1"]}
+{"question": "Why use two windows for each alert?", "expect": ["slos#1"]}
+{"question": "How do we know the alerts fire correctly?", "expect": ["slos#2"]}
+{"question": "How long did the game day outage last and how much budget did it use?", "expect": ["postmortem-2026-11-09-game-day#2", "postmortem-2026-11-09-game-day#1"]}
+{"question": "When was the chaos switch turned off during the game day?", "expect": ["postmortem-2026-11-09-game-day#3"]}
+{"question": "Why did make up fail with etcdserver request timed out?", "expect": ["postmortem-2026-11-09-game-day#4"]}
+{"question": "Why did the error budget go so far negative in the lab?", "expect": ["postmortem-2026-11-09-game-day#4"]}
+{"question": "How quickly would the page fire in production with real history?", "expect": ["postmortem-2026-11-09-game-day#5", "postmortem-2026-11-09-game-day#4"]}
+{"question": "What follow-up actions came out of the game day?", "expect": ["postmortem-2026-11-09-game-day#8"]}
