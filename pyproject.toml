@@ -1,0 +1,31 @@
+[project]
+name = "ask-the-runbook"
+version = "0.1.0"
+description = "An on-call assistant that answers from your runbooks, cites its sources, and says when it doesn't know."
+requires-python = ">=3.12"
+license = "Apache-2.0"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+branch = true
+source = ["runbook"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
+exclude_also = ['if __name__ == "__main__":']
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "S", "UP"]   # S = flake8-bandit security rules
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
