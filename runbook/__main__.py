@@ -1,0 +1,82 @@
+"""Command line:
+
+python -m runbook ask "Checkout is throwing 500s, what do I check?"
+python -m runbook search "rollback"
+python -m runbook eval
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from runbook import evals
+from runbook.agent import Agent
+from runbook.docs import load
+from runbook.llm import DEFAULT_MODEL, DEFAULT_URL, LLMError, Ollama
+from runbook.search import Index
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def main(argv: list[str] | None = None, llm=None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="runbook", description="Answers on-call questions from your runbooks."
+    )
+    parser.add_argument("--docs", default=str(ROOT / "corpus"), help="Folder of Markdown runbooks")
+    sub = parser.add_subparsers(dest="command", required=True)
+    ask = sub.add_parser("ask", help="Ask a question (needs Ollama)")
+    ask.add_argument("question")
+    ask.add_argument("--model", default=DEFAULT_MODEL)
+    ask.add_argument("--url", default=DEFAULT_URL)
+    ask.add_argument("--trace", action="store_true", help="Show every tool call the agent made")
+    find = sub.add_parser("search", help="Show the best matching sections (no LLM needed)")
+    find.add_argument("query")
+    ev = sub.add_parser("eval", help="Measure retrieval on evals/questions.jsonl (no LLM needed)")
+    ev.add_argument("--questions", default=str(ROOT / "evals" / "questions.jsonl"))
+    ev.add_argument("--min", type=float, default=0.0, help="Exit 1 if the score is below this (0 to 1)")
+    args = parser.parse_args(argv)
+
+    try:
+        index = Index(load(args.docs))
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    if args.command == "search":
+        for hit in index.search(args.query, k=5):
+            print(f"{hit.score:5.1f}  [{hit.section.id}] {hit.section.doc} > {hit.section.title}")
+        return 0
+
+    if args.command == "eval":
+        result = evals.run(index, evals.load_questions(args.questions))
+        print(evals.report(result, 3))
+        return 0 if result.score >= args.min else 1
+
+    try:
+        result = Agent(index, llm or Ollama(args.url, args.model)).ask(args.question)
+    except LLMError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    if args.trace:
+        for step in result.trace:
+            print(f"  tool: {step}")
+    if result.answered:
+        print(result.answer)
+        print("\nSources:")
+        for s in result.citations:
+            print(f"  [{s.id}] {s.doc} > {s.title}")
+        return 0
+    print("I couldn't answer that from the runbooks.")
+    for problem in result.problems:
+        print(f"  {problem}")
+    if result.suggestions:
+        print("\nThese sections are the closest match:")
+        for s in result.suggestions:
+            print(f"  [{s.id}] {s.doc} > {s.title}")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
