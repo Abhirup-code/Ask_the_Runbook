@@ -42,3 +42,18 @@ def test_ask_explains_when_ollama_is_down(capsys):
 def test_an_empty_docs_folder_is_an_error(tmp_path, capsys):
     assert main(["--docs", str(tmp_path), "search", "x"]) == 2
     assert "No Markdown sections" in capsys.readouterr().err
+
+
+def test_ask_passes_the_timeout_to_ollama(monkeypatch, capsys):
+    seen = {}
+
+    class Recording:
+        def __init__(self, url, model, timeout):
+            seen.update(url=url, model=model, timeout=timeout)
+
+        def chat(self, messages, tools):
+            return say("NOT_FOUND")
+
+    monkeypatch.setattr("runbook.__main__.Ollama", Recording)
+    main(["ask", "anything", "--timeout", "600", "--model", "qwen2.5:3b"])
+    assert seen["timeout"] == 600 and seen["model"] == "qwen2.5:3b"

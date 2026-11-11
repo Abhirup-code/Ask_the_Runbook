@@ -14,7 +14,7 @@ from pathlib import Path
 from runbook import evals
 from runbook.agent import Agent
 from runbook.docs import load
-from runbook.llm import DEFAULT_MODEL, DEFAULT_URL, LLMError, Ollama
+from runbook.llm import DEFAULT_MODEL, DEFAULT_TIMEOUT, DEFAULT_URL, LLMError, Ollama
 from runbook.search import Index
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +30,9 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     ask.add_argument("question")
     ask.add_argument("--model", default=DEFAULT_MODEL)
     ask.add_argument("--url", default=DEFAULT_URL)
+    ask.add_argument(
+        "--timeout", type=float, default=DEFAULT_TIMEOUT, help="Seconds to wait for each model reply"
+    )
     ask.add_argument("--trace", action="store_true", help="Show every tool call the agent made")
     find = sub.add_parser("search", help="Show the best matching sections (no LLM needed)")
     find.add_argument("query")
@@ -55,7 +58,7 @@ def main(argv: list[str] | None = None, llm=None) -> int:
         return 0 if result.score >= args.min else 1
 
     try:
-        result = Agent(index, llm or Ollama(args.url, args.model)).ask(args.question)
+        result = Agent(index, llm or Ollama(args.url, args.model, args.timeout)).ask(args.question)
     except LLMError as exc:
         print(exc, file=sys.stderr)
         return 2

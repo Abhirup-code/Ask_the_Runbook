@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -82,3 +83,24 @@ def test_an_unreachable_ollama_explains_itself():
 def test_only_http_urls_are_allowed():
     with pytest.raises(ValueError):
         Ollama("file:///etc/passwd")
+
+
+class SlowOllama(BaseHTTPRequestHandler):
+    def do_POST(self):
+        time.sleep(1.5)
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'{"message": {"content": "late"}}')
+
+    def log_message(self, *args):
+        pass
+
+
+def test_a_slow_model_gets_a_helpful_timeout_message():
+    server = HTTPServer(("127.0.0.1", 0), SlowOllama)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with pytest.raises(LLMError, match="took longer than 0.5 seconds.*smaller model"):
+            Ollama(f"http://127.0.0.1:{server.server_port}", timeout=0.5).chat([], [])
+    finally:
+        server.shutdown()

@@ -73,6 +73,10 @@ python -m runbook ask "What does a burn rate of 14.4 mean?"
 Use `--model` (or `RUNBOOK_MODEL`) for another model, `--url` (or `OLLAMA_URL`) for another Ollama
 server, and `--docs` to point it at your own folder of Markdown runbooks.
 
+The first question loads the model into memory, which can take a few minutes on a laptop, so each
+reply may take up to 300 seconds (`--timeout` or `RUNBOOK_TIMEOUT` to change it). On a machine with
+8 GB of memory, `--model qwen2.5:3b` is much faster.
+
 ## Measuring it
 
 The agent can only cite what search finds, so retrieval is measured first.

@@ -11,6 +11,8 @@ from typing import Protocol
 
 DEFAULT_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 DEFAULT_MODEL = os.environ.get("RUNBOOK_MODEL", "qwen2.5:7b")  # small, free, and good at tool calls
+# The first call loads the model into memory, which can take minutes on a laptop.
+DEFAULT_TIMEOUT = float(os.environ.get("RUNBOOK_TIMEOUT", "300"))
 
 
 @dataclass(frozen=True)
@@ -34,7 +36,7 @@ class LLMError(RuntimeError):
 
 
 class Ollama:
-    def __init__(self, url: str = DEFAULT_URL, model: str = DEFAULT_MODEL, timeout: float = 120.0):
+    def __init__(self, url: str = DEFAULT_URL, model: str = DEFAULT_MODEL, timeout: float = DEFAULT_TIMEOUT):
         if not url.startswith(("http://", "https://")):
             raise ValueError("Ollama URL must start with http:// or https://")
         self.url, self.model, self.timeout = url.rstrip("/"), model, timeout
@@ -56,6 +58,12 @@ class Ollama:
             with urllib.request.urlopen(request, timeout=self.timeout) as resp:  # noqa: S310 (scheme checked above)
                 data = json.load(resp)
         except OSError as exc:
+            if isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError):
+                raise LLMError(
+                    f"Ollama took longer than {self.timeout:g} seconds to answer. The first question loads "
+                    "the model into memory, which is slow on a laptop. Try again, raise --timeout, or use a "
+                    "smaller model such as --model qwen2.5:3b."
+                ) from exc
             raise LLMError(
                 f"Could not reach Ollama at {self.url}: {exc}. Is `ollama serve` running?"
             ) from exc
