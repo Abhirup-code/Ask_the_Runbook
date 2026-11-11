@@ -57,7 +57,7 @@ def test_citing_a_section_that_was_never_retrieved_is_caught():
 
 
 def test_not_found_is_an_honest_no():
-    llm = ScriptedLLM(search("kafka consumer lag"), say(NOT_FOUND))
+    llm = ScriptedLLM(search("kafka consumer lag"), say(NOT_FOUND), say(NOT_FOUND))
     result = Agent(INDEX, llm).ask("How do I fix Kafka consumer lag?")
     assert not result.answered
     assert result.problems == ["The runbooks don't cover this."]
@@ -70,9 +70,8 @@ def test_unknown_tools_and_ids_are_explained_to_the_model():
     )
     Agent(INDEX, llm).ask("anything")
     outputs = [m["content"] for m in llm.requests[-1] if m["role"] == "tool"]
-    assert outputs[0] == "No matching sections."  # the automatic first search for "anything"
-    assert "Unknown tool 'delete_prod'" in outputs[1]
-    assert "No section with id 'nope#9'" in outputs[2]
+    assert "Unknown tool 'delete_prod'" in outputs[0]
+    assert "No section with id 'nope#9'" in outputs[1]
 
 
 def test_a_search_with_no_matches_says_so():
@@ -96,16 +95,16 @@ def test_citing_a_bracketed_id_in_read_section_works():
 def test_the_top_results_come_back_in_full_so_a_small_model_sees_the_answer():
     """A real 3B model searched "500s after deploy", saw a preview cut off right before the
     rollback command, and gave up. The top results now come back whole."""
-    llm = ScriptedLLM(search("500s after deploy"), say(NOT_FOUND))
+    llm = ScriptedLLM(search("500s after deploy"), say(NOT_FOUND), say(NOT_FOUND))
     Agent(INDEX, llm).ask("Checkout is throwing 500s after a deploy")
-    results = llm.requests[-1][-1]["content"]
+    results = [m for m in llm.requests[1] if m["role"] == "tool"][-1]["content"]
     assert "kubectl -n checkout rollout undo deployment/checkout" in results
 
 
 def test_lower_results_are_cut_and_say_how_to_read_more():
-    llm = ScriptedLLM(search("checkout"), say(NOT_FOUND))
+    llm = ScriptedLLM(search("checkout"), say(NOT_FOUND), say(NOT_FOUND))
     Agent(INDEX, llm, results=6).ask("checkout")
-    results = llm.requests[-1][-1]["content"]
+    results = [m for m in llm.requests[1] if m["role"] == "tool"][-1]["content"]
     assert "(call read_section for the rest)" in results
 
 
@@ -119,9 +118,11 @@ def test_the_question_is_searched_before_the_model_answers():
     )
     result = Agent(INDEX, llm).ask("Checkout is throwing 500s after a deploy. What do I do?")
     assert result.answered
-    first_request = llm.requests[0]
-    assert first_request[-1]["role"] == "tool"
-    assert "rollout undo deployment/checkout" in first_request[-1]["content"]
+    question = llm.requests[0][-1]
+    assert question["role"] == "user"
+    assert question["content"].startswith("Runbook sections:")
+    assert "rollout undo deployment/checkout" in question["content"]
+    assert question["content"].endswith("Question: Checkout is throwing 500s after a deploy. What do I do?")
     assert result.trace[0].endswith("[automatic]")
 
 
@@ -130,3 +131,27 @@ def test_made_up_citation_ids_are_still_blocked():
     result = Agent(INDEX, llm).ask("What does a burn rate of 14.4 mean?")
     assert not result.answered
     assert "never retrieved: search_docs#2" in result.problems[0]
+
+
+def test_a_reflex_not_found_gets_one_nudge_to_check_the_sections():
+    """A real 1.5B model replied NOT_FOUND even with the answer in front of it."""
+    llm = ScriptedLLM(
+        say(NOT_FOUND),
+        say("A burn rate of 14.4 uses the budget in about 2 days [slos#1]."),
+    )
+    result = Agent(INDEX, llm).ask("What does a burn rate of 14.4 mean?")
+    assert result.answered
+    nudge = llm.requests[1][-1]["content"]
+    assert nudge.startswith("Check the runbook sections again: [slos#1]")
+
+
+def test_not_found_twice_is_accepted():
+    llm = ScriptedLLM(say(NOT_FOUND), say(NOT_FOUND))
+    result = Agent(INDEX, llm).ask("What does a burn rate of 14.4 mean?")
+    assert not result.answered and len(llm.requests) == 2
+
+
+def test_not_found_with_nothing_retrieved_is_accepted_at_once():
+    llm = ScriptedLLM(say(NOT_FOUND))
+    assert not Agent(INDEX, llm).ask("zzzz qqqq").answered
+    assert len(llm.requests) == 1

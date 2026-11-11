@@ -25,7 +25,7 @@ def test_ask_prints_the_answer_sources_and_trace(capsys):
 
 
 def test_ask_without_an_answer_points_to_sections(capsys):
-    llm = ScriptedLLM(search("kafka"), say("NOT_FOUND"))
+    llm = ScriptedLLM(search("kafka"), say("NOT_FOUND"), say("NOT_FOUND"))
     assert main(["ask", "How do I fix Kafka lag?"], llm=llm) == 1
     assert "couldn't answer" in capsys.readouterr().out
 

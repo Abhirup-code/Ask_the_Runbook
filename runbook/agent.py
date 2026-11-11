@@ -14,8 +14,8 @@ from runbook.search import Index
 NOT_FOUND = "NOT_FOUND"
 
 SYSTEM = f"""You are an on-call assistant. Answer only from the team's runbooks.
-- The question has already been searched once; the results are above. Call search_docs again or
-  read_section only if you need more.
+- The question comes with the runbook sections that best match it. Call search_docs or read_section
+  only if you need more.
 - Answer in a few short sentences or steps, with the exact commands from the runbooks.
 - Cite every claim with the section id in square brackets, like [checkout-availability#2].
 - Never add a number, threshold, or command that is not in the sections you read.
@@ -100,22 +100,18 @@ class Agent:
         return result
 
     def ask(self, question: str) -> Result:
-        messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": question}]
         seen: dict[str, Section] = {}
         trace: list[str] = []
-        retried = False
-        # Search once before the model's first turn. Small models often answer without calling any
-        # tool, so this way the right sections are always in front of them. Tools stay available.
-        first = {"query": question}
-        trace.append(f"search_docs({first}) [automatic]")
-        messages.append(
-            {
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [{"function": {"name": "search_docs", "arguments": first}}],
-            }
-        )
-        messages.append({"role": "tool", "tool_name": "search_docs", "content": self._search(question, seen)})
+        retried = nudged = False
+        # Search before the model's first turn and put the sections right in the question, the
+        # classic RAG prompt. Small models often skip tools and pay little attention to tool
+        # messages, but they read the question. The tools stay available for follow-ups.
+        trace.append(f"search_docs({{'query': {question!r}}}) [automatic]")
+        context = self._search(question, seen)
+        messages = [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": f"Runbook sections:\n\n{context}\n\nQuestion: {question}"},
+        ]
         for _ in range(self.max_steps):
             reply = self.llm.chat(messages, TOOLS)
             if reply.tool_calls:
@@ -135,6 +131,21 @@ class Agent:
                 continue
 
             text = reply.content.strip()
+            if text.startswith(NOT_FOUND) and seen and not nudged:
+                # Weak models say NOT_FOUND by reflex. If the search found sections, ask once to
+                # check them. The guard still rejects anything they don't support.
+                nudged = True
+                messages.append({"role": "assistant", "content": text})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Check the runbook sections again: "
+                        + ", ".join(f"[{i}]" for i in seen)
+                        + ". If one answers the question, answer from it with citations."
+                        + f" If none does, reply {NOT_FOUND}.",
+                    }
+                )
+                continue
             if text.startswith(NOT_FOUND):
                 return self._give_up(
                     question, Result(False, problems=["The runbooks don't cover this."], trace=trace)
