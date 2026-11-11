@@ -30,6 +30,25 @@ Sources:
 
 This shows the output format. Model answers vary; the tests drive the agent with a scripted model.
 
+## Tested on a real small model
+
+I tested it on my laptop with **qwen2.5 1.5B**, a model small enough to be weak on purpose, to see how
+the agent fails.
+
+**Before:** the model never called the search tool and made up citation ids. The guard caught it and
+refused to show the answer:
+
+![A 1.5B model invents citation ids like search_docs#1, and the guard refuses the answer](docs/images/tiny-model-blocked.png)
+
+That test led to three changes: the top search results come back in full, the question is searched
+before the model's first turn with the sections put right into the prompt, and a reflexive "not found"
+gets one recheck. **After**, the same model answered from the runbook with a citation:
+
+![The same model answers what a 14.4 burn rate means, citing checkout-availability#0](docs/images/tiny-model-cited-answer.png)
+
+It still couldn't pull the rollback steps out of the longest runbook section, and said so instead of
+guessing. Across every test, it never showed a made-up answer. For real use, a 7B model is a better fit.
+
 ## How it works
 
 ```
