@@ -91,3 +91,19 @@ def test_the_agent_stops_after_max_steps():
 def test_citing_a_bracketed_id_in_read_section_works():
     llm = ScriptedLLM(read("[slos#1]"), say("A burn rate of 14.4 uses the budget in about 2 days [slos#1]."))
     assert Agent(INDEX, llm).ask("What does 14.4 mean?").answered
+
+
+def test_the_top_results_come_back_in_full_so_a_small_model_sees_the_answer():
+    """A real 3B model searched "500s after deploy", saw a preview cut off right before the
+    rollback command, and gave up. The top results now come back whole."""
+    llm = ScriptedLLM(search("500s after deploy"), say(NOT_FOUND))
+    Agent(INDEX, llm).ask("Checkout is throwing 500s after a deploy")
+    results = llm.requests[-1][-1]["content"]
+    assert "kubectl -n checkout rollout undo deployment/checkout" in results
+
+
+def test_lower_results_are_cut_and_say_how_to_read_more():
+    llm = ScriptedLLM(search("checkout"), say(NOT_FOUND))
+    Agent(INDEX, llm, results=6).ask("checkout")
+    results = llm.requests[-1][-1]["content"]
+    assert "(call read_section for the rest)" in results

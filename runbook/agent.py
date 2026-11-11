@@ -14,18 +14,19 @@ from runbook.search import Index
 NOT_FOUND = "NOT_FOUND"
 
 SYSTEM = f"""You are an on-call assistant. Answer only from the team's runbooks.
-- Always call search_docs first. Call read_section to read a section in full before relying on it.
+- Always call search_docs first. The top results come back in full; call read_section for any other id.
 - Answer in a few short sentences or steps, with the exact commands from the runbooks.
 - Cite every claim with the section id in square brackets, like [checkout-availability#2].
 - Never add a number, threshold, or command that is not in the sections you read.
-- If the runbooks do not answer the question, reply with exactly {NOT_FOUND}."""
+- If a result is about the question, answer from it. Reply with exactly {NOT_FOUND} only when no
+  result covers the question."""
 
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "search_docs",
-            "description": "Search the runbooks. Returns the best sections with their ids and a preview.",
+            "description": "Search the runbooks. Returns the best sections in full, with their ids.",
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string", "description": "What to look for"}},
@@ -47,6 +48,8 @@ TOOLS = [
     },
 ]
 
+FULL = 3  # the best results come back in full: runbook sections are short, and small models rarely
+# call read_section, so a cut-off preview hid the answer from them in testing
 PREVIEW = 300
 
 
@@ -69,10 +72,12 @@ class Agent:
         if not hits:
             return "No matching sections."
         out = []
-        for h in hits:
+        for rank, h in enumerate(hits):
             seen[h.section.id] = h.section
-            preview = h.section.text[:PREVIEW] + ("..." if len(h.section.text) > PREVIEW else "")
-            out.append(f"[{h.section.id}] {h.section.doc} > {h.section.title}\n{preview}")
+            text = h.section.text
+            if rank >= FULL and len(text) > PREVIEW:
+                text = text[:PREVIEW] + "... (call read_section for the rest)"
+            out.append(f"[{h.section.id}] {h.section.doc} > {h.section.title}\n{text}")
         return "\n\n".join(out)
 
     def _read(self, section_id: str, seen: dict[str, Section]) -> str:
