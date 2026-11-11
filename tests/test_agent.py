@@ -19,6 +19,7 @@ def test_search_read_and_answer_with_a_citation():
     assert result.answered
     assert [s.id for s in result.citations] == ["checkout-availability#2"]
     assert result.trace == [
+        "search_docs({'query': 'Checkout is failing, what do I check?'}) [automatic]",
         "search_docs({'query': 'checkout 500 errors'})",
         "read_section({'id': 'checkout-availability#2'})",
     ]
@@ -48,10 +49,8 @@ def test_two_bad_answers_mean_no_answer_and_suggestions():
     assert result.suggestions and result.suggestions[0].id == "slos#0"
 
 
-def test_answering_without_searching_is_caught():
-    llm = ScriptedLLM(
-        say("Restart it [checkout-availability#2]."), say("Restart it [checkout-availability#2].")
-    )
+def test_citing_a_section_that_was_never_retrieved_is_caught():
+    llm = ScriptedLLM(say("Restart it [slos#2]."), say("Restart it [slos#2]."))
     result = Agent(INDEX, llm).ask("Checkout is down")
     assert not result.answered
     assert "never retrieved" in result.problems[0]
@@ -71,8 +70,9 @@ def test_unknown_tools_and_ids_are_explained_to_the_model():
     )
     Agent(INDEX, llm).ask("anything")
     outputs = [m["content"] for m in llm.requests[-1] if m["role"] == "tool"]
-    assert "Unknown tool 'delete_prod'" in outputs[0]
-    assert "No section with id 'nope#9'" in outputs[1]
+    assert outputs[0] == "No matching sections."  # the automatic first search for "anything"
+    assert "Unknown tool 'delete_prod'" in outputs[1]
+    assert "No section with id 'nope#9'" in outputs[2]
 
 
 def test_a_search_with_no_matches_says_so():
@@ -107,3 +107,26 @@ def test_lower_results_are_cut_and_say_how_to_read_more():
     Agent(INDEX, llm, results=6).ask("checkout")
     results = llm.requests[-1][-1]["content"]
     assert "(call read_section for the rest)" in results
+
+
+def test_the_question_is_searched_before_the_model_answers():
+    """A real 1.5B model never called a tool: it answered "not found" or made up ids like
+    search_docs#1. Searching first puts the right sections in front of it anyway."""
+    llm = ScriptedLLM(
+        say(
+            "Roll back with `kubectl -n checkout rollout undo deployment/checkout` [checkout-availability#2]."
+        )
+    )
+    result = Agent(INDEX, llm).ask("Checkout is throwing 500s after a deploy. What do I do?")
+    assert result.answered
+    first_request = llm.requests[0]
+    assert first_request[-1]["role"] == "tool"
+    assert "rollout undo deployment/checkout" in first_request[-1]["content"]
+    assert result.trace[0].endswith("[automatic]")
+
+
+def test_made_up_citation_ids_are_still_blocked():
+    llm = ScriptedLLM(say("Burn rate 14.4 [search_docs#1]."), say("Burn rate 14.4 [search_docs#2]."))
+    result = Agent(INDEX, llm).ask("What does a burn rate of 14.4 mean?")
+    assert not result.answered
+    assert "never retrieved: search_docs#2" in result.problems[0]

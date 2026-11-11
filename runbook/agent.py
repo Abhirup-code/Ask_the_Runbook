@@ -14,7 +14,8 @@ from runbook.search import Index
 NOT_FOUND = "NOT_FOUND"
 
 SYSTEM = f"""You are an on-call assistant. Answer only from the team's runbooks.
-- Always call search_docs first. The top results come back in full; call read_section for any other id.
+- The question has already been searched once; the results are above. Call search_docs again or
+  read_section only if you need more.
 - Answer in a few short sentences or steps, with the exact commands from the runbooks.
 - Cite every claim with the section id in square brackets, like [checkout-availability#2].
 - Never add a number, threshold, or command that is not in the sections you read.
@@ -103,6 +104,18 @@ class Agent:
         seen: dict[str, Section] = {}
         trace: list[str] = []
         retried = False
+        # Search once before the model's first turn. Small models often answer without calling any
+        # tool, so this way the right sections are always in front of them. Tools stay available.
+        first = {"query": question}
+        trace.append(f"search_docs({first}) [automatic]")
+        messages.append(
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"function": {"name": "search_docs", "arguments": first}}],
+            }
+        )
+        messages.append({"role": "tool", "tool_name": "search_docs", "content": self._search(question, seen)})
         for _ in range(self.max_steps):
             reply = self.llm.chat(messages, TOOLS)
             if reply.tool_calls:

@@ -17,7 +17,7 @@ the runbooks never leave your machine.
 
 ```
 $ python -m runbook ask "Checkout is throwing 500s right after a deploy. What do I do?" --trace
-  tool: search_docs({'query': 'checkout 500 errors after deploy'})
+  tool: search_docs({'query': 'Checkout is throwing 500s right after a deploy. What do I do?'}) [automatic]
   tool: read_section({'id': 'checkout-availability#2'})
 Check `kubectl -n checkout rollout history deployment/checkout`. If the errors started right after
 a rollout, roll back with `kubectl -n checkout rollout undo deployment/checkout` [checkout-availability#2].
@@ -47,7 +47,9 @@ question ──> LLM ──tool call──> search_docs (BM25 over runbook secti
    `checkout-availability#2`. `#` lines inside code blocks are PromQL comments, not headings.
 2. **Search with BM25**, the ranking classic search engines use. No embedding model to download and
    nothing to host. Section titles count twice, since a heading says what a section is about.
-3. **An agent loop with two tools.** The model decides what to search and what to read, for up to 6 steps.
+3. **Search first, then an agent loop with two tools.** The question is searched once before the model
+   sees it, and the top 3 sections come back in full, because small models often answer without
+   calling any tool. After that the model can search again or read other sections, for up to 6 steps.
 4. **A guard on every answer.** It must cite at least one section, every cited section must be one the
    agent actually retrieved, and every number in the answer must appear in the sections it cites.
    If the guard rejects an answer, the model is told why and gets one retry. After that, the agent
