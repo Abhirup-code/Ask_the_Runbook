@@ -1,7 +1,11 @@
-"""Retrieval eval: for each question, does a section that answers it rank in the top k?
+"""Two evals that need no LLM, so CI runs both on every change.
 
-The agent can only cite what search finds, so this is the number that matters first. It needs no
-LLM, so CI runs it on every change and fails if the score drops below the threshold.
+Retrieval: for each question, does a section that answers it rank in the top k? The agent can only
+cite what search finds, so this is the number that matters first.
+
+Guard: hand-written answers, good and bad, checked against the real runbooks. Every bad answer must
+be blocked and every good one let through. The bad ones are the mistakes models really make:
+made-up thresholds, invented citation ids, numbers taken from a section they didn't cite.
 """
 
 from __future__ import annotations
@@ -10,6 +14,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from runbook.docs import Section
+from runbook.guard import check
 from runbook.search import Index
 
 
@@ -51,4 +57,47 @@ def report(result: EvalResult, k: int) -> str:
     lines = [f"Retrieval hit@{k}: {result.hits}/{result.total} ({result.score:.0%})"]
     for question, expected, found in result.misses:
         lines.append(f"  MISS {question}\n       expected {expected}, got {found}")
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class GuardResult:
+    total: int
+    wrong: list[tuple[str, str, list[str]]]  # why, expected outcome, the guard's problems
+
+    @property
+    def ok(self) -> bool:
+        return not self.wrong
+
+
+def load_guard_cases(path: str | Path) -> list[dict]:
+    cases = []
+    for n, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        if item.get("expect") not in ("pass", "fail") or not item.get("seen") or "answer" not in item:
+            raise ValueError(f"{path}:{n}: each line needs expect (pass or fail), seen, and answer")
+        cases.append(item)
+    return cases
+
+
+def run_guard(sections: list[Section], cases: list[dict]) -> GuardResult:
+    by_id = {s.id: s for s in sections}
+    wrong = []
+    for case in cases:
+        missing = [i for i in case["seen"] if i not in by_id]
+        if missing:
+            raise ValueError(f"{case['why']}: no section {', '.join(missing)} in the runbooks")
+        verdict = check(case["answer"], {i: by_id[i] for i in case["seen"]})
+        if verdict.ok != (case["expect"] == "pass"):
+            wrong.append((case.get("why", case["answer"]), case["expect"], verdict.problems))
+    return GuardResult(len(cases), wrong)
+
+
+def guard_report(result: GuardResult) -> str:
+    right = result.total - len(result.wrong)
+    lines = [f"Guard: {right}/{result.total} answers handled correctly"]
+    for why, expected, problems in result.wrong:
+        lines.append(f"  WRONG {why}\n        expected {expected}, guard said {problems or 'ok'}")
     return "\n".join(lines)

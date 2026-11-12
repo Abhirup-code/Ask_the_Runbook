@@ -1,0 +1,15 @@
+{"expect": "pass", "why": "States the SLO as written", "seen": ["slos#0"], "answer": "The availability SLO is 99.5% of checkouts over 30 days [slos#0]."}
+{"expect": "pass", "why": "Page threshold and how fast the budget goes", "seen": ["checkout-availability#0"], "answer": "A page means the budget is burning at 14.4x or more, so the month's budget is gone in about 2 days [checkout-availability#0]."}
+{"expect": "pass", "why": "Copies the rollback command", "seen": ["checkout-availability#2"], "answer": "If errors started right after a rollout, roll back with `kubectl -n checkout rollout undo deployment/checkout` [checkout-availability#2]."}
+{"expect": "pass", "why": "Metric names with digits are not claims", "seen": ["checkout-availability#1"], "answer": "Check slo:sli_error:ratio_rate5m for the error ratio over the last 5 minutes [checkout-availability#1]."}
+{"expect": "pass", "why": "Same time span in another unit (3.6 hours)", "seen": ["slos#0"], "answer": "The availability budget is about 216 minutes of full outage in 30 days [slos#0]."}
+{"expect": "pass", "why": "Two sections cited, each number in one of them", "seen": ["checkout-availability#0", "slos#0"], "answer": "Latency must keep 95% of checkouts under 300 ms [slos#0]; availability pages at 14.4x [checkout-availability#0]."}
+{"expect": "fail", "why": "Made-up objective", "seen": ["slos#0"], "answer": "The availability SLO is 99.95% over 30 days [slos#0]."}
+{"expect": "fail", "why": "No citation", "seen": ["checkout-availability#2"], "answer": "Roll back the deploy and restart the pods."}
+{"expect": "fail", "why": "Cites a section it never retrieved", "seen": ["checkout-availability#0"], "answer": "Roll back with kubectl rollout undo [checkout-latency#2]."}
+{"expect": "fail", "why": "Invented citation id, as a 1.5B model did", "seen": ["checkout-availability#0"], "answer": "The burn rate threshold is 14.4 [search_docs#1]."}
+{"expect": "fail", "why": "Number is in a retrieved section, but not the one cited", "seen": ["checkout-availability#0", "slos#0"], "answer": "A page fires at a 14.4x burn rate [slos#0]."}
+{"expect": "fail", "why": "Wrong window", "seen": ["slos#0"], "answer": "The availability SLO is 99.5% over 7 days [slos#0]."}
+{"expect": "fail", "why": "Wrong time span in another unit", "seen": ["checkout-availability#0"], "answer": "At 14.4x the budget is gone in about 72 hours [checkout-availability#0]."}
+{"expect": "fail", "why": "Invented scale command", "seen": ["checkout-availability#2"], "answer": "Scale checkout to 12 replicas with kubectl scale [checkout-availability#2]."}
+{"expect": "fail", "why": "Empty answer", "seen": ["checkout-availability#0"], "answer": ""}

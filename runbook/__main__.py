@@ -2,7 +2,7 @@
 
 python -m runbook ask "Checkout is throwing 500s, what do I check?"
 python -m runbook search "rollback"
-python -m runbook eval
+python -m runbook eval          # retrieval and guard evals
 """
 
 from __future__ import annotations
@@ -36,13 +36,15 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     ask.add_argument("--trace", action="store_true", help="Show every tool call the agent made")
     find = sub.add_parser("search", help="Show the best matching sections (no LLM needed)")
     find.add_argument("query")
-    ev = sub.add_parser("eval", help="Measure retrieval on evals/questions.jsonl (no LLM needed)")
+    ev = sub.add_parser("eval", help="Measure retrieval and the guard (no LLM needed)")
     ev.add_argument("--questions", default=str(ROOT / "evals" / "questions.jsonl"))
-    ev.add_argument("--min", type=float, default=0.0, help="Exit 1 if the score is below this (0 to 1)")
+    ev.add_argument("--guard-cases", default=str(ROOT / "evals" / "guard_cases.jsonl"))
+    ev.add_argument("--min", type=float, default=0.0, help="Exit 1 if retrieval scores below this (0 to 1)")
     args = parser.parse_args(argv)
 
     try:
-        index = Index(load(args.docs))
+        sections = load(args.docs)
+        index = Index(sections)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -55,7 +57,9 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     if args.command == "eval":
         result = evals.run(index, evals.load_questions(args.questions))
         print(evals.report(result, 3))
-        return 0 if result.score >= args.min else 1
+        guard = evals.run_guard(sections, evals.load_guard_cases(args.guard_cases))
+        print(evals.guard_report(guard))
+        return 0 if result.score >= args.min and guard.ok else 1
 
     try:
         result = Agent(index, llm or Ollama(args.url, args.model, args.timeout)).ask(args.question)

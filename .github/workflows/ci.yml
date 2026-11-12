@@ -31,7 +31,8 @@ jobs:
         run: ruff check . && ruff format --check .
       - name: Tests, with at least 95% coverage
         run: pytest --cov
-      - name: Retrieval eval (fails under 85% hit@3)
+      - name: Retrieval and guard evals (fails under 85% hit@3, or on any wrong guard verdict)
         run: |
+          set -o pipefail
           python -m runbook eval --min 0.85 | tee eval.txt
-          { echo '### Retrieval eval'; echo '```'; cat eval.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### Evals'; echo '```'; cat eval.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

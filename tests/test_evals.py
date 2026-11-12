@@ -48,3 +48,36 @@ def test_every_expected_section_exists():
 def test_retrieval_on_the_real_corpus_stays_above_the_bar():
     result = evals.run(Index(load(ROOT / "corpus")), evals.load_questions(ROOT / "evals/questions.jsonl"))
     assert result.score >= THRESHOLD, evals.report(result, 3)
+
+
+GUARD_SECTIONS = [Section("s#0", "SLOs", "SLO", "Availability is 99.5% over 30 days.")]
+
+
+def test_the_guard_eval_counts_wrong_verdicts():
+    cases = [
+        {"expect": "pass", "why": "grounded", "seen": ["s#0"], "answer": "It is 99.5% [s#0]."},
+        {"expect": "fail", "why": "made up", "seen": ["s#0"], "answer": "It is 99.9% [s#0]."},
+        {"expect": "pass", "why": "wrongly expected to pass", "seen": ["s#0"], "answer": "It is 42 [s#0]."},
+    ]
+    result = evals.run_guard(GUARD_SECTIONS, cases)
+    assert (result.total, len(result.wrong), result.ok) == (3, 1, False)
+    report = evals.guard_report(result)
+    assert "Guard: 2/3" in report and "WRONG wrongly expected to pass" in report
+
+
+def test_a_guard_case_must_name_real_sections():
+    case = {"expect": "pass", "why": "typo", "seen": ["s#9"], "answer": "x [s#9]"}
+    with pytest.raises(ValueError, match="no section s#9"):
+        evals.run_guard(GUARD_SECTIONS, [case])
+
+
+def test_bad_guard_case_lines_are_rejected(tmp_path):
+    path = tmp_path / "g.jsonl"
+    path.write_text('\n{"expect": "maybe", "seen": ["s#0"], "answer": "x"}\n')
+    with pytest.raises(ValueError, match="g.jsonl:2"):
+        evals.load_guard_cases(path)
+
+
+def test_the_guard_handles_every_real_case():
+    result = evals.run_guard(load(ROOT / "corpus"), evals.load_guard_cases(ROOT / "evals/guard_cases.jsonl"))
+    assert result.ok, evals.guard_report(result)

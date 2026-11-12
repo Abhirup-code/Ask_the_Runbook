@@ -10,8 +10,16 @@ def test_search_prints_ranked_sections(capsys):
 
 def test_eval_passes_and_fails_on_the_threshold(capsys):
     assert main(["eval"]) == 0
-    assert "Retrieval hit@3:" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Retrieval hit@3:" in out and "Guard: 15/15" in out
     assert main(["eval", "--min", "1.01"]) == 1
+
+
+def test_eval_fails_when_the_guard_gets_one_wrong(tmp_path, capsys):
+    cases = tmp_path / "g.jsonl"
+    cases.write_text('{"expect": "pass", "seen": ["slos#0"], "answer": "It is 99.99% [slos#0]."}\n')
+    assert main(["eval", "--guard-cases", str(cases)]) == 1
+    assert "Guard: 0/1" in capsys.readouterr().out
 
 
 def test_ask_prints_the_answer_sources_and_trace(capsys):

@@ -114,6 +114,17 @@ CI fails if this drops below 85%. The two misses are known and left visible rath
 "Does a page need a postmortem?" ranks the game day postmortem itself above the runbook step that says
 so, and "How long did the outage last?" ranks the SLO policy above the postmortem's impact table.
 
+The guard is measured too. [`evals/guard_cases.jsonl`](evals/guard_cases.jsonl) has 15 answers checked
+against the real runbooks: 6 good ones it must let through, and 9 bad ones it must block, built from
+mistakes models really make (a made-up threshold, an invented citation id, a number borrowed from a
+section it didn't cite, the wrong time window):
+
+```
+Guard: 15/15 answers handled correctly
+```
+
+CI fails if the guard gets even one wrong.
+
 ## The corpus
 
 [`corpus/`](corpus) holds the runbooks, SLO policy, and first game day postmortem from my
@@ -124,12 +135,15 @@ an error-budget deploy gate on Kubernetes. Point `--docs` at any folder of Markd
 
 - Tests cover the loader, search, eval, LLM client, guard, agent loop, and command line. The agent tests
   use a scripted model, so they need no LLM and cover retries, unknown tools, bad ids, and running out of steps.
-- CI runs ruff (with security rules), the tests with a 95% coverage floor, and the retrieval eval.
+- CI runs ruff (with security rules), the tests with a 95% coverage floor, and both evals.
 - GitHub Actions are pinned to commit SHAs, and Dependabot keeps them and the Python tools current.
 
 ## Limits
 
 - Not yet tested against a live model in CI; that needs Ollama on the runner.
+- The guard checks that each number is in the cited section, not that it is used the right way. The
+  SLO policy mentions 99.9% as the target it turned down, so "the SLO is 99.9%" citing that section
+  would pass. Citations keep that easy to spot: the reader can open the section and see.
 - BM25 matches words, not meaning. A question that uses none of the runbook's words won't find it.
   Adding embeddings is the next step if the eval shows that happening.
 - The number check understands time spans ("60 minutes" matches "1h"), but nothing else in another
