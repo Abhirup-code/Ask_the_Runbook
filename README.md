@@ -96,6 +96,22 @@ python -m runbook ask "What does a burn rate of 14.4 mean?"
 Use `--model` (or `RUNBOOK_MODEL`) for another model, `--url` (or `OLLAMA_URL`) for another Ollama
 server, and `--docs` to point it at your own folder of Markdown runbooks.
 
+To use it from a chat bot or a script, add `--json`. It prints one object with the answer, its sources,
+and the trace, or, when the guard blocked the answer, `"answer": null` with the problems and the closest
+sections. The exit code is 0 for an answer and 1 for none:
+
+```json
+{
+  "question": "What does a burn rate of 14.4 mean?",
+  "answered": true,
+  "answer": "At 14.4x the whole month's budget is gone in about 2 days [checkout-availability#0].",
+  "sources": [{"id": "checkout-availability#0", "doc": "Runbook: CheckoutAvailabilityBudgetBurn", "title": "Runbook: CheckoutAvailabilityBudgetBurn"}],
+  "problems": [],
+  "closest_sections": [],
+  "trace": ["search_docs({'query': 'What does a burn rate of 14.4 mean?'}) [automatic]"]
+}
+```
+
 The first question loads the model into memory, which can take a few minutes on a laptop, so each
 reply may take up to 300 seconds (`--timeout` or `RUNBOOK_TIMEOUT` to change it). On a machine with
 8 GB of memory, `--model qwen2.5:3b` is much faster.

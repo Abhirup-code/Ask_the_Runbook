@@ -1,3 +1,5 @@
+import json
+
 from runbook.__main__ import main
 from runbook.llm import LLMError
 from tests.fakes import ScriptedLLM, read, say, search
@@ -65,3 +67,21 @@ def test_ask_passes_the_timeout_to_ollama(monkeypatch, capsys):
     monkeypatch.setattr("runbook.__main__.Ollama", Recording)
     main(["ask", "anything", "--timeout", "600", "--model", "qwen2.5:3b"])
     assert seen["timeout"] == 600 and seen["model"] == "qwen2.5:3b"
+
+
+def test_ask_json_prints_the_answer_and_its_sources(capsys):
+    llm = ScriptedLLM(read("slos#1"), say("14.4 uses the budget in about 2 days [slos#1]."))
+    assert main(["ask", "What is 14.4?", "--json"], llm=llm) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["answered"] is True
+    assert out["answer"].endswith("[slos#1].")
+    assert out["sources"][0]["id"] == "slos#1"
+    assert out["closest_sections"] == []
+
+
+def test_ask_json_never_carries_a_rejected_answer(capsys):
+    llm = ScriptedLLM(say("Scale to 12 replicas."), say("Scale to 12 replicas."))
+    assert main(["ask", "How do I scale checkout?", "--json"], llm=llm) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["answered"] is False and out["answer"] is None and out["sources"] == []
+    assert out["problems"] and out["closest_sections"]

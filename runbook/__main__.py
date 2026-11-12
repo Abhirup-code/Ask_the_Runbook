@@ -8,6 +8,7 @@ python -m runbook eval          # retrieval and guard evals
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -18,6 +19,23 @@ from runbook.llm import DEFAULT_MODEL, DEFAULT_TIMEOUT, DEFAULT_URL, LLMError, O
 from runbook.search import Index
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def as_json(question: str, result) -> dict:
+    """The answer in a shape a chat bot or a script can use. Same rules: no answer without sources."""
+
+    def source(s):
+        return {"id": s.id, "doc": s.doc, "title": s.title}
+
+    return {
+        "question": question,
+        "answered": result.answered,
+        "answer": result.answer if result.answered else None,
+        "sources": [source(s) for s in result.citations],
+        "problems": result.problems,
+        "closest_sections": [source(s) for s in result.suggestions],
+        "trace": result.trace,
+    }
 
 
 def main(argv: list[str] | None = None, llm=None) -> int:
@@ -34,6 +52,7 @@ def main(argv: list[str] | None = None, llm=None) -> int:
         "--timeout", type=float, default=DEFAULT_TIMEOUT, help="Seconds to wait for each model reply"
     )
     ask.add_argument("--trace", action="store_true", help="Show every tool call the agent made")
+    ask.add_argument("--json", action="store_true", help="Print one JSON object, for a chat bot or a script")
     find = sub.add_parser("search", help="Show the best matching sections (no LLM needed)")
     find.add_argument("query")
     ev = sub.add_parser("eval", help="Measure retrieval and the guard (no LLM needed)")
@@ -66,6 +85,9 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     except LLMError as exc:
         print(exc, file=sys.stderr)
         return 2
+    if args.json:
+        print(json.dumps(as_json(args.question, result), indent=2))
+        return 0 if result.answered else 1
     if args.trace:
         for step in result.trace:
             print(f"  tool: {step}")
