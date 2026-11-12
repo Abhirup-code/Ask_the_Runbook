@@ -71,7 +71,8 @@ question ──> LLM ──tool call──> search_docs (BM25 over runbook secti
    model can then search again or read other sections, for up to 6 steps. If it says "not found"
    even though sections were found, it is asked once to check them again.
 4. **A guard on every answer.** It must cite at least one section, every cited section must be one the
-   agent actually retrieved, and every number in the answer must appear in the sections it cites.
+   agent actually retrieved, and every number in the answer must appear in the sections it cites
+   (a time span may use another unit, so "60 minutes" is fine when the runbook says "1h").
    If the guard rejects an answer, the model is told why and gets one retry. After that, the agent
    says it can't answer and lists the 3 closest sections.
 
@@ -131,8 +132,8 @@ an error-budget deploy gate on Kubernetes. Point `--docs` at any folder of Markd
 - Not yet tested against a live model in CI; that needs Ollama on the runner.
 - BM25 matches words, not meaning. A question that uses none of the runbook's words won't find it.
   Adding embeddings is the next step if the eval shows that happening.
-- The number check compares numbers as written, so "5 minutes" in an answer and "5m" in a runbook
-  count as different. The guard errs on the side of saying "I don't know".
+- The number check understands time spans ("60 minutes" matches "1h"), but nothing else in another
+  form: "half a percent" or "0.005" will not match "0.5%". The guard errs on the side of saying "I don't know".
 
 ## License
 

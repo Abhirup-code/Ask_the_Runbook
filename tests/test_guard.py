@@ -1,11 +1,12 @@
 from runbook.docs import Section
-from runbook.guard import check, numbers
+from runbook.guard import check, durations, numbers
 
 SEEN = {
     "avail#2": Section(
         "avail#2", "Runbook", "2. Check the usual causes", "If error_rate is not 0, run scripts/chaos.sh 0 0."
     ),
     "slos#0": Section("slos#0", "SLOs", "The SLOs", "Availability objective is 99.5% over 30 days."),
+    "alert#1": Section("alert#1", "Alerts", "Page", "Page when the 1h and 5m burn rates pass 14.4."),
 }
 
 
@@ -47,3 +48,29 @@ def test_list_markers_and_citation_numbers_are_not_claims():
 
 def test_empty_answer_fails():
     assert check("   ", SEEN).problems == ["The answer is empty."]
+
+
+def test_the_same_time_span_in_another_unit_passes():
+    verdict = check("Page when the burn rate over 60 minutes and 300 seconds passes 14.4 [alert#1].", SEEN)
+    assert verdict.ok, verdict.problems
+    assert check("Availability is measured over 720 hours [slos#0].", SEEN).ok
+
+
+def test_a_different_time_span_still_fails():
+    verdict = check("Page when the 2 hour burn rate passes 14.4 [alert#1].", SEEN)
+    assert not verdict.ok
+    assert "2" in verdict.problems[0]
+
+
+def test_a_bare_number_is_not_a_time_span():
+    assert not check("Page when the burn rate passes 60 [alert#1].", SEEN).ok
+
+
+def test_durations_reads_units():
+    assert durations("rate[5m], 1.5 s, 30 days, 250ms, 2 Weeks") == {
+        "5": {300},
+        "1.5": {1.5},
+        "30": {2592000},
+        "250": {0.25},
+        "2": {1209600},
+    }
