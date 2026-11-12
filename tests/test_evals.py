@@ -20,6 +20,16 @@ def test_hit_and_miss_are_counted():
     assert (result.hits, result.total, result.score) == (1, 2, 0.5)
     assert result.misses[0][0] == "disk"
     assert "MISS disk" in evals.report(result, 3)
+    assert result.ranks == (1, None)
+
+
+def test_rank_metrics():
+    result = evals.EvalResult(4, 2, [], ranks=(1, 2, 4, None))
+    assert (result.hit_at(1), result.hit_at(3), result.hit_at(5)) == (0.25, 0.5, 0.75)
+    assert result.mrr == (1 + 0.5 + 0.25) / 4
+    assert "hit@1 25%, hit@5 75%, MRR 0.44" in evals.report(result, 3)
+    empty = evals.EvalResult(0, 0, [])
+    assert (empty.hit_at(1), empty.mrr) == (0.0, 0.0)
 
 
 def test_an_empty_eval_scores_zero():

@@ -24,10 +24,20 @@ class EvalResult:
     total: int
     hits: int
     misses: list[tuple[str, list[str], list[str]]]  # question, expected ids, what search returned
+    ranks: tuple[int | None, ...] = ()  # where the first right section ranked, per question (1 = top)
 
     @property
     def score(self) -> float:
         return self.hits / self.total if self.total else 0.0
+
+    def hit_at(self, k: int) -> float:
+        found = sum(1 for r in self.ranks if r is not None and r <= k)
+        return found / len(self.ranks) if self.ranks else 0.0
+
+    @property
+    def mrr(self) -> float:
+        """Mean reciprocal rank: 1.0 if the right section is always first, 0.5 if always second."""
+        return sum(1 / r for r in self.ranks if r) / len(self.ranks) if self.ranks else 0.0
 
 
 def load_questions(path: str | Path) -> list[dict]:
@@ -42,19 +52,27 @@ def load_questions(path: str | Path) -> list[dict]:
     return questions
 
 
+DEPTH = 10  # how far down the ranking to look for the rank metrics
+
+
 def run(index: Index, questions: list[dict], k: int = 3) -> EvalResult:
-    hits, misses = 0, []
+    hits, misses, ranks = 0, [], []
     for q in questions:
-        found = [h.section.id for h in index.search(q["question"], k=k)]
-        if set(found) & set(q["expect"]):
+        ranked = [h.section.id for h in index.search(q["question"], k=max(k, DEPTH))]
+        rank = next((n for n, i in enumerate(ranked, 1) if i in q["expect"]), None)
+        ranks.append(rank)
+        if rank is not None and rank <= k:
             hits += 1
         else:
-            misses.append((q["question"], q["expect"], found))
-    return EvalResult(len(questions), hits, misses)
+            misses.append((q["question"], q["expect"], ranked[:k]))
+    return EvalResult(len(questions), hits, misses, tuple(ranks))
 
 
 def report(result: EvalResult, k: int) -> str:
-    lines = [f"Retrieval hit@{k}: {result.hits}/{result.total} ({result.score:.0%})"]
+    lines = [
+        f"Retrieval hit@{k}: {result.hits}/{result.total} ({result.score:.0%})",
+        f"  hit@1 {result.hit_at(1):.0%}, hit@5 {result.hit_at(5):.0%}, MRR {result.mrr:.2f}",
+    ]
     for question, expected, found in result.misses:
         lines.append(f"  MISS {question}\n       expected {expected}, got {found}")
     return "\n".join(lines)

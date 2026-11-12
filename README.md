@@ -124,7 +124,12 @@ with the sections that answer it. The eval checks whether one of them ranks in t
 
 ```
 Retrieval hit@3: 16/18 (89%)
+  hit@1 67%, hit@5 94%, MRR 0.79
 ```
+
+hit@1 says how often the very first result is right. MRR (mean reciprocal rank) is 1.0 when the right
+section always comes first and 0.5 when it always comes second, so it shows ranking getting better or
+worse even when hit@3 doesn't move.
 
 CI fails if this drops below 85%. The two misses are known and left visible rather than tuned away:
 "Does a page need a postmortem?" ranks the game day postmortem itself above the runbook step that says
