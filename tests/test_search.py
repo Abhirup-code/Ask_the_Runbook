@@ -1,5 +1,9 @@
-from runbook.docs import Section
+from pathlib import Path
+
+from runbook.docs import Section, load
 from runbook.search import Index, stem, tokens
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def section(i, title, text):
@@ -39,3 +43,23 @@ def test_get_finds_a_section_by_id():
     index = Index(SECTIONS)
     assert index.get("d#2").title == "Database slow"
     assert index.get("d#9") is None
+
+
+def test_why_shows_the_matching_line_with_the_words_in_capitals():
+    index = Index(load(ROOT / "corpus"))
+    section = index.get("checkout-availability#2")
+    line = index.why("chaos switch left on", section)
+    assert "CHAOS" in line and "SWITCH" in line
+    assert "kubectl" in line.lower()
+    assert len(line) <= 90
+
+
+def test_why_marks_words_through_the_stemmer():
+    section = Section("x#0", "Doc", "Alerts", "The alert fired twice.\n")
+    assert Index([section]).why("alerting", section) == "The ALERT fired twice."
+
+
+def test_why_is_empty_when_nothing_matches():
+    section = Section("x#0", "Doc", "T", "nothing here")
+    assert Index([section]).why("kafka", section) == ""
+    assert Index([Section("x#0", "Doc", "T", "")]).why("kafka", Section("x#0", "Doc", "T", "")) == ""

@@ -55,6 +55,8 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     ask.add_argument("--json", action="store_true", help="Print one JSON object, for a chat bot or a script")
     find = sub.add_parser("search", help="Show the best matching sections (no LLM needed)")
     find.add_argument("query")
+    find.add_argument("-k", type=int, default=5, help="How many sections to show (default 5)")
+    find.add_argument("--why", action="store_true", help="Show the line that matched, words in CAPITALS")
     ev = sub.add_parser("eval", help="Measure retrieval and the guard (no LLM needed)")
     ev.add_argument("--questions", default=str(ROOT / "evals" / "questions.jsonl"))
     ev.add_argument("--guard-cases", default=str(ROOT / "evals" / "guard_cases.jsonl"))
@@ -69,8 +71,14 @@ def main(argv: list[str] | None = None, llm=None) -> int:
         return 2
 
     if args.command == "search":
-        for hit in index.search(args.query, k=5):
+        hits = index.search(args.query, k=args.k)
+        if not hits:
+            print("Nothing matched. The runbooks share no words with that question.")
+            return 1
+        for hit in hits:
             print(f"{hit.score:5.1f}  [{hit.section.id}] {hit.section.doc} > {hit.section.title}")
+            if args.why:
+                print(f"        {index.why(args.query, hit.section)}")
         return 0
 
     if args.command == "eval":

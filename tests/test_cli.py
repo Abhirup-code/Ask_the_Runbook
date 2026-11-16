@@ -10,6 +10,18 @@ def test_search_prints_ranked_sections(capsys):
     assert "[checkout-" in capsys.readouterr().out
 
 
+def test_search_shows_why_a_section_matched(capsys):
+    assert main(["search", "chaos switch left on", "-k", "1", "--why"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("[checkout-") == 1  # -k 1 means one result
+    assert "CHAOS SWITCH LEFT" in out
+
+
+def test_search_says_so_when_nothing_matches(capsys):
+    assert main(["search", "kafka consumer lag"]) == 1
+    assert "Nothing matched" in capsys.readouterr().out
+
+
 def test_eval_passes_and_fails_on_the_threshold(capsys):
     assert main(["eval"]) == 0
     out = capsys.readouterr().out

@@ -85,6 +85,7 @@ You need Python 3.12+. Retrieval and the eval need nothing else:
 ```bash
 pip install -r requirements-dev.txt
 python -m runbook search "rollback a bad deploy"
+python -m runbook search "chaos switch left on" -k 3 --why   # show the line that matched
 python -m runbook eval
 ```
 

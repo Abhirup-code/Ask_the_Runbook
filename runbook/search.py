@@ -73,3 +73,21 @@ class Index:
 
     def get(self, section_id: str) -> Section | None:
         return self.by_id.get(section_id)
+
+    def why(self, query: str, section: Section, width: int = 90) -> str:
+        """One line from the section showing why it matched: the line with the most query words,
+        with those words in CAPITALS. Makes a wrong hit obvious at a glance."""
+        wanted = set(tokens(query))
+        best, best_score = "", 0
+        for line in section.text.splitlines():
+            score = sum(1 for word in tokens(line) if word in wanted)
+            if score > best_score:
+                best, best_score = line.strip(), score
+        if not best:
+            return ""
+        marked = re.sub(
+            r"[A-Za-z0-9]+",
+            lambda m: m.group(0).upper() if stem(m.group(0).lower()) in wanted else m.group(0),
+            best,
+        )
+        return marked if len(marked) <= width else marked[: width - 3].rstrip() + "..."
