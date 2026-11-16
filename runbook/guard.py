@@ -5,6 +5,8 @@ threshold at 3 a.m. is worse than no answer, so the rules are strict:
 2. Every cited section is one the agent actually retrieved in this conversation.
 3. Every number in the answer appears in the sections it cites. No invented thresholds or timings.
    A time span may be written in another unit: "60 minutes" is fine when the runbook says "1h".
+4. Every command in the answer appears in the sections it cites. A made-up `kubectl delete` at
+   3 a.m. is the worst thing this tool could produce, so commands are copied, never composed.
 """
 
 from __future__ import annotations
@@ -23,6 +25,13 @@ DURATION = re.compile(
     re.IGNORECASE,
 )
 SECONDS = {"ms": 0.001, "s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+CODE_SPAN = re.compile(r"`([^`\n]+)`")
+# Words that make a code span a command to run, rather than a name being quoted. A bare
+# `slo:sli_error:ratio_rate5m` or `checkout` is a metric or a service, and is checked as text.
+COMMANDS = frozenset(
+    "kubectl helm docker promtool curl git make bash sh systemctl journalctl psql ssh "
+    "terraform aws gcloud az argocd flux kill pkill rm chmod chown".split()
+)
 
 
 @dataclass(frozen=True)
@@ -56,6 +65,17 @@ def durations(text: str) -> dict[str, set[float]]:
     return found
 
 
+def commands(text: str) -> list[str]:
+    """Code spans that start with a command word, with their whitespace squeezed so that
+    `kubectl  rollout   undo` and `kubectl rollout undo` compare equal."""
+    found = []
+    for span in CODE_SPAN.findall(text):
+        squeezed = " ".join(span.split())
+        if squeezed and squeezed.split()[0].lower() in COMMANDS:
+            found.append(squeezed)
+    return found
+
+
 def check(answer: str, seen: dict[str, Section]) -> Verdict:
     answer = answer.strip()
     if not answer:
@@ -79,4 +99,12 @@ def check(answer: str, seen: dict[str, Section]) -> Verdict:
         invented.sort(key=lambda n: (len(n), n))
         if invented:
             problems.append(f"These numbers are not in the cited sections: {', '.join(invented)}.")
+        source_commands = {" ".join(sources.split())}
+        made_up = [c for c in commands(answer) if not any(c in s for s in source_commands)]
+        if made_up:
+            problems.append(
+                "These commands are not in the cited sections: "
+                + ", ".join(f"`{c}`" for c in dict.fromkeys(made_up))
+                + "."
+            )
     return Verdict(not problems, cited, problems)

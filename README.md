@@ -73,6 +73,8 @@ question ──> LLM ──tool call──> search_docs (BM25 over runbook secti
 4. **A guard on every answer.** It must cite at least one section, every cited section must be one the
    agent actually retrieved, and every number in the answer must appear in the sections it cites
    (a time span may use another unit, so "60 minutes" is fine when the runbook says "1h").
+   Commands are checked the same way: a `kubectl` line the runbooks don't contain is rejected, so
+   commands are copied, never composed.
    If the guard rejects an answer, the model is told why and gets one retry. After that, the agent
    says it can't answer and lists the 3 closest sections.
 
@@ -162,6 +164,8 @@ an error-budget deploy gate on Kubernetes. Point `--docs` at any folder of Markd
 ## Limits
 
 - Not yet tested against a live model in CI; that needs Ollama on the runner.
+- The guard spots an invented command only when it is in backticks, the way the runbooks and the
+  model both write commands. A command written as plain prose is checked as ordinary text.
 - The guard checks that each number is in the cited section, not that it is used the right way. The
   SLO policy mentions 99.9% as the target it turned down, so "the SLO is 99.9%" citing that section
   would pass. Citations keep that easy to spot: the reader can open the section and see.
