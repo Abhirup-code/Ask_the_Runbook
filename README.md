@@ -121,19 +121,24 @@ reply may take up to 300 seconds (`--timeout` or `RUNBOOK_TIMEOUT` to change it)
 ## Measuring it
 
 The agent can only cite what search finds, so retrieval is measured first.
-[`evals/questions.jsonl`](evals/questions.jsonl) has 18 questions an on-call engineer might ask, each
-with the sections that answer it. The eval checks whether one of them ranks in the top 3:
+[`evals/questions.jsonl`](evals/questions.jsonl) has 32 questions an on-call engineer might ask, each
+with the sections that answer it. The eval checks whether one of them ranks in the top 3, and breaks
+the score down per runbook, so a document that is hard to search stands out from search being bad:
 
 ```
-Retrieval hit@3: 16/18 (89%)
-  hit@1 67%, hit@5 94%, MRR 0.79
+Retrieval hit@3: 30/32 (94%)
+  hit@1 75%, hit@5 97%, MRR 0.85
+  checkout-availability           7/8
+  checkout-latency                6/6
+  postmortem-2026-11-09-game-day  10/11
+  slos                            7/7
 ```
 
 hit@1 says how often the very first result is right. MRR (mean reciprocal rank) is 1.0 when the right
 section always comes first and 0.5 when it always comes second, so it shows ranking getting better or
 worse even when hit@3 doesn't move.
 
-CI fails if this drops below 85%. The two misses are known and left visible rather than tuned away:
+CI fails if this drops below 85%. Two misses are known and left visible rather than tuned away:
 "Does a page need a postmortem?" ranks the game day postmortem itself above the runbook step that says
 so, and "How long did the outage last?" ranks the SLO policy above the postmortem's impact table.
 

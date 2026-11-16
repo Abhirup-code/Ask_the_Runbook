@@ -16,3 +16,17 @@
 {"question": "Why did the error budget go so far negative in the lab?", "expect": ["postmortem-2026-11-09-game-day#4"]}
 {"question": "How quickly would the page fire in production with real history?", "expect": ["postmortem-2026-11-09-game-day#5", "postmortem-2026-11-09-game-day#4"]}
 {"question": "What follow-up actions came out of the game day?", "expect": ["postmortem-2026-11-09-game-day#8"]}
+{"question": "How do I port-forward to Prometheus?", "expect": ["checkout-availability#1"]}
+{"question": "Is the chaos switch still on?", "expect": ["checkout-availability#2", "checkout-latency#2"]}
+{"question": "What alert fires when checkout is too slow?", "expect": ["checkout-latency#0"]}
+{"question": "How many milliseconds is the latency target?", "expect": ["checkout-latency#0", "slos#0"]}
+{"question": "How do I turn chaos latency back off?", "expect": ["checkout-latency#2"]}
+{"question": "Does the deploy gate stop releases while the budget is spent?", "expect": ["checkout-latency#3", "checkout-availability#0"]}
+{"question": "What share of checkouts is allowed to fail?", "expect": ["slos#0"]}
+{"question": "Which promtool tests prove the rules work?", "expect": ["slos#2"]}
+{"question": "Who wrote the game day postmortem and when?", "expect": ["postmortem-2026-11-09-game-day#0"]}
+{"question": "Was anyone actually affected by the game day outage?", "expect": ["postmortem-2026-11-09-game-day#2", "postmortem-2026-11-09-game-day#1"]}
+{"question": "Did the hotfix get through the gate during the drill?", "expect": ["postmortem-2026-11-09-game-day#6", "postmortem-2026-11-09-game-day#3"]}
+{"question": "Why did Grafana say dashboard not found?", "expect": ["postmortem-2026-11-09-game-day#7", "postmortem-2026-11-09-game-day#4"]}
+{"question": "How much memory should Docker Desktop get?", "expect": ["postmortem-2026-11-09-game-day#8"]}
+{"question": "Should I look for the root cause before rolling back?", "expect": ["checkout-availability#3"]}

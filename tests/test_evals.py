@@ -91,3 +91,10 @@ def test_bad_guard_case_lines_are_rejected(tmp_path):
 def test_the_guard_handles_every_real_case():
     result = evals.run_guard(load(ROOT / "corpus"), evals.load_guard_cases(ROOT / "evals/guard_cases.jsonl"))
     assert result.ok, evals.guard_report(result)
+
+
+def test_the_report_breaks_the_score_down_by_document():
+    result = evals.EvalResult(3, 2, [], ranks=(1, None, 2), docs=("slos", "slos", "checkout-availability"))
+    assert evals.by_document(result, 3) == ["checkout-availability  1/1", "slos                   1/2"]
+    assert "slos                   1/2" in evals.report(result, 3)
+    assert evals.by_document(evals.EvalResult(0, 0, [])) == []

@@ -25,6 +25,7 @@ class EvalResult:
     hits: int
     misses: list[tuple[str, list[str], list[str]]]  # question, expected ids, what search returned
     ranks: tuple[int | None, ...] = ()  # where the first right section ranked, per question (1 = top)
+    docs: tuple[str, ...] = ()  # which document each question's answer lives in
 
     @property
     def score(self) -> float:
@@ -56,8 +57,9 @@ DEPTH = 10  # how far down the ranking to look for the rank metrics
 
 
 def run(index: Index, questions: list[dict], k: int = 3) -> EvalResult:
-    hits, misses, ranks = 0, [], []
+    hits, misses, ranks, docs = 0, [], [], []
     for q in questions:
+        docs.append(q["expect"][0].split("#")[0])
         ranked = [h.section.id for h in index.search(q["question"], k=max(k, DEPTH))]
         rank = next((n for n, i in enumerate(ranked, 1) if i in q["expect"]), None)
         ranks.append(rank)
@@ -65,7 +67,19 @@ def run(index: Index, questions: list[dict], k: int = 3) -> EvalResult:
             hits += 1
         else:
             misses.append((q["question"], q["expect"], ranked[:k]))
-    return EvalResult(len(questions), hits, misses, tuple(ranks))
+    return EvalResult(len(questions), hits, misses, tuple(ranks), tuple(docs))
+
+
+def by_document(result: EvalResult, k: int = 3) -> list[str]:
+    """One line per runbook: how many of its questions were found. A whole document scoring
+    badly points at the document, not at the search."""
+    if len(result.docs) != len(result.ranks):
+        return []
+    per_doc: dict[str, list[bool]] = {}
+    for doc, rank in zip(result.docs, result.ranks, strict=True):
+        per_doc.setdefault(doc, []).append(rank is not None and rank <= k)
+    width = max((len(d) for d in per_doc), default=0)
+    return [f"{doc:<{width}}  {sum(found)}/{len(found)}" for doc, found in sorted(per_doc.items())]
 
 
 def report(result: EvalResult, k: int) -> str:
@@ -73,6 +87,7 @@ def report(result: EvalResult, k: int) -> str:
         f"Retrieval hit@{k}: {result.hits}/{result.total} ({result.score:.0%})",
         f"  hit@1 {result.hit_at(1):.0%}, hit@5 {result.hit_at(5):.0%}, MRR {result.mrr:.2f}",
     ]
+    lines += [f"  {line}" for line in by_document(result, k)]
     for question, expected, found in result.misses:
         lines.append(f"  MISS {question}\n       expected {expected}, got {found}")
     return "\n".join(lines)
