@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     find.add_argument("query")
     find.add_argument("-k", type=int, default=5, help="How many sections to show (default 5)")
     find.add_argument("--why", action="store_true", help="Show the line that matched, words in CAPITALS")
+    find.add_argument("--terms", action="store_true", help="Show which query words earned each score")
     ev = sub.add_parser("eval", help="Measure retrieval and the guard (no LLM needed)")
     ev.add_argument("--questions", default=str(ROOT / "evals" / "questions.jsonl"))
     ev.add_argument("--guard-cases", default=str(ROOT / "evals" / "guard_cases.jsonl"))
@@ -79,6 +80,15 @@ def main(argv: list[str] | None = None, llm=None) -> int:
             print(f"{hit.score:5.1f}  [{hit.section.id}] {hit.section.doc} > {hit.section.title}")
             if args.why:
                 print(f"        {index.why(args.query, hit.section)}")
+            if args.terms:
+                parts = index.breakdown(args.query, hit.section)
+                print("        " + "  +  ".join(f"{term} {score:.1f}" for term, score in parts))
+        # The same number the agent abstains on, so "it says it doesn't know" can be looked into.
+        covered = index.coverage(args.query, [h.section for h in hits])
+        print(
+            f"\nCoverage: {covered:.0%} of the question's words appear in these {len(hits)} sections"
+            f" (the agent answers from {MIN_COVERAGE:.0%} up)"
+        )
         return 0
 
     if args.command == "eval":

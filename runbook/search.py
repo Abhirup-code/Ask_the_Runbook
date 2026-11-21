@@ -104,6 +104,21 @@ class Index:
     def get(self, section_id: str) -> Section | None:
         return self.by_id.get(section_id)
 
+    def breakdown(self, query: str, section: Section) -> list[tuple[str, float]]:
+        """Which of the question's words earned this section its score, and how much each was
+        worth, biggest first. A ranking nobody can explain is a ranking nobody can fix."""
+        n = self.index_of.get(section.id)
+        if n is None:
+            return []
+        scored = [
+            (term, self._bm25(term, tf, self.lengths[n]))
+            for term in set(tokens(query))
+            for i, tf in self.postings.get(term, ())
+            if i == n
+        ]
+        scored.sort(key=lambda pair: (-pair[1], pair[0]))
+        return scored
+
     def why(self, query: str, section: Section, width: int = 90) -> str:
         """One line from the section showing why it matched: the line with the most query words,
         with those words in CAPITALS. Makes a wrong hit obvious at a glance."""

@@ -97,3 +97,17 @@ def test_ask_json_never_carries_a_rejected_answer(capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["answered"] is False and out["answer"] is None and out["sources"] == []
     assert out["problems"] and out["closest_sections"]
+
+
+def test_search_terms_shows_the_score_broken_down_by_word(capsys):
+    assert main(["search", "chaos switch left on", "-k", "1", "--terms"]) == 0
+    out = capsys.readouterr().out
+    assert "chao " in out and "switch " in out
+    assert "  +  " in out
+
+
+def test_search_reports_the_coverage_the_agent_abstains_on(capsys):
+    assert main(["search", "chaos switch left on for checkout", "-k", "3"]) == 0
+    assert "Coverage: 100% of the question's words" in capsys.readouterr().out
+    assert main(["search", "Which Kafka topic does checkout publish orders to?", "-k", "2"]) == 0
+    assert "Coverage: 40% of the question's words" in capsys.readouterr().out

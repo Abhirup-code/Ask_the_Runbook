@@ -99,3 +99,22 @@ def test_coverage_of_a_question_with_no_real_words_is_zero():
 def test_coverage_ignores_sections_from_another_index():
     index = Index(SECTIONS)
     assert index.coverage("disk full", [Section("other#0", "D", "T", "disk full")]) == 0.0
+
+
+def test_breakdown_names_the_words_that_earned_the_score():
+    index = Index(SECTIONS)
+    parts = index.breakdown("disk full logs", SECTIONS[0])
+    assert {term for term, _ in parts} == {"disk", "full", "log"}
+    assert [score for _, score in parts] == sorted((s for _, s in parts), reverse=True)
+    assert sum(score for _, score in parts) == index.search("disk full logs")[0].score
+
+
+def test_breakdown_leaves_out_words_the_section_does_not_have():
+    index = Index(SECTIONS)
+    assert [term for term, _ in index.breakdown("disk kafka", SECTIONS[0])] == ["disk"]
+    assert index.breakdown("kafka topic", SECTIONS[0]) == []
+
+
+def test_breakdown_of_a_section_from_another_index_is_empty():
+    index = Index(SECTIONS)
+    assert index.breakdown("disk", Section("other#0", "D", "T", "disk")) == []
