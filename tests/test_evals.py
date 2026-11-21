@@ -38,9 +38,21 @@ def test_an_empty_eval_scores_zero():
 
 def test_bad_eval_lines_are_rejected(tmp_path):
     path = tmp_path / "q.jsonl"
-    path.write_text('{"question": "x", "expect": []}\n')
+    path.write_text('{"question": "x"}\n')
     with pytest.raises(ValueError, match="q.jsonl:1"):
         evals.load_questions(path)
+    path.write_text('{"question": "x", "expect": "d#0"}\n')
+    with pytest.raises(ValueError, match="q.jsonl:1"):
+        evals.load_questions(path)
+
+
+def test_an_empty_expect_list_means_the_runbooks_do_not_cover_it(tmp_path):
+    path = tmp_path / "q.jsonl"
+    path.write_text('{"question": "covered", "expect": ["d#0"]}\n{"question": "not", "expect": []}\n')
+    questions = evals.load_questions(path)
+    assert len(questions) == 2
+    assert [q["question"] for q in evals.answerable(questions)] == ["covered"]
+    assert [q["question"] for q in evals.unanswerable(questions)] == ["not"]
 
 
 def test_blank_lines_are_ignored(tmp_path):
@@ -56,8 +68,48 @@ def test_every_expected_section_exists():
 
 
 def test_retrieval_on_the_real_corpus_stays_above_the_bar():
-    result = evals.run(Index(load(ROOT / "corpus")), evals.load_questions(ROOT / "evals/questions.jsonl"))
+    questions = evals.answerable(evals.load_questions(ROOT / "evals/questions.jsonl"))
+    result = evals.run(Index(load(ROOT / "corpus")), questions)
     assert result.score >= THRESHOLD, evals.report(result, 3)
+
+
+def test_the_real_corpus_has_questions_it_cannot_answer():
+    questions = evals.load_questions(ROOT / "evals/questions.jsonl")
+    assert len(evals.unanswerable(questions)) >= 8
+
+
+SCORE_SECTIONS = [
+    Section("d#0", "Doc", "Disk full", "Delete old logs when the disk fills up."),
+    Section("d#1", "Doc", "TLS", "Renew the certificate."),
+]
+
+
+def test_top_scores_separate_when_uncovered_questions_score_lower():
+    index = Index(SCORE_SECTIONS)
+    scores = evals.top_scores(
+        index,
+        [{"question": "disk full logs", "expect": ["d#0"]}, {"question": "kafka topic", "expect": []}],
+    )
+    assert scores.highest_unanswerable == 0.0
+    assert scores.lowest_answerable > 0.0
+    assert scores.separable
+    report = evals.scores_report(scores)
+    assert "kafka topic" in report and "would separate them" in report
+
+
+def test_top_scores_report_says_so_when_the_two_overlap():
+    index = Index(SCORE_SECTIONS)
+    scores = evals.top_scores(
+        index,
+        [{"question": "logs", "expect": ["d#0"]}, {"question": "disk full logs", "expect": []}],
+    )
+    assert not scores.separable
+    assert "cannot separate them" in evals.scores_report(scores)
+
+
+def test_top_scores_of_nothing_are_zero():
+    scores = evals.TopScores((), ())
+    assert (scores.lowest_answerable, scores.highest_unanswerable, scores.separable) == (0.0, 0.0, False)
 
 
 GUARD_SECTIONS = [Section("s#0", "SLOs", "SLO", "Availability is 99.5% over 30 days.")]

@@ -82,8 +82,10 @@ def main(argv: list[str] | None = None, llm=None) -> int:
         return 0
 
     if args.command == "eval":
-        result = evals.run(index, evals.load_questions(args.questions))
+        questions = evals.load_questions(args.questions)
+        result = evals.run(index, evals.answerable(questions))
         print(evals.report(result, 3))
+        print(evals.scores_report(evals.top_scores(index, questions)))
         guard = evals.run_guard(sections, evals.load_guard_cases(args.guard_cases))
         print(evals.guard_report(guard))
         return 0 if result.score >= args.min and guard.ok else 1

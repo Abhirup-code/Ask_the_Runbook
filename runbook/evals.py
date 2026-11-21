@@ -42,15 +42,25 @@ class EvalResult:
 
 
 def load_questions(path: str | Path) -> list[dict]:
+    """Every question in the file. An empty expect list means the runbooks do not cover it, and
+    the right behaviour is to find nothing worth offering."""
     questions = []
     for n, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
         item = json.loads(line)
-        if not item.get("question") or not item.get("expect"):
-            raise ValueError(f"{path}:{n}: each line needs a question and a non-empty expect list")
+        if not item.get("question") or not isinstance(item.get("expect"), list):
+            raise ValueError(f"{path}:{n}: each line needs a question and an expect list")
         questions.append(item)
     return questions
+
+
+def answerable(questions: list[dict]) -> list[dict]:
+    return [q for q in questions if q["expect"]]
+
+
+def unanswerable(questions: list[dict]) -> list[dict]:
+    return [q for q in questions if not q["expect"]]
 
 
 DEPTH = 10  # how far down the ranking to look for the rank metrics
@@ -90,6 +100,55 @@ def report(result: EvalResult, k: int) -> str:
     lines += [f"  {line}" for line in by_document(result, k)]
     for question, expected, found in result.misses:
         lines.append(f"  MISS {question}\n       expected {expected}, got {found}")
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class TopScores:
+    """What the best hit scored, for a set of questions. Answerable and unanswerable questions
+    scored side by side show whether a score threshold could tell them apart at all."""
+
+    answerable: tuple[float, ...]
+    unanswerable: tuple[tuple[str, float, str], ...]  # question, top score, top section id
+
+    @property
+    def lowest_answerable(self) -> float:
+        return min(self.answerable, default=0.0)
+
+    @property
+    def highest_unanswerable(self) -> float:
+        return max((score for _, score, _ in self.unanswerable), default=0.0)
+
+    @property
+    def separable(self) -> bool:
+        """True when every unanswerable question scores below every answerable one, so a single
+        threshold could reject the first group without losing any of the second."""
+        return bool(self.answerable) and self.highest_unanswerable < self.lowest_answerable
+
+
+def top_scores(index: Index, questions: list[dict]) -> TopScores:
+    def top(question: str) -> tuple[float, str]:
+        hits = index.search(question, k=1)
+        return (hits[0].score, hits[0].section.id) if hits else (0.0, "")
+
+    return TopScores(
+        tuple(top(q["question"])[0] for q in answerable(questions)),
+        tuple((q["question"], *top(q["question"])) for q in unanswerable(questions)),
+    )
+
+
+def scores_report(scores: TopScores) -> str:
+    lines = [
+        f"Top score: answerable questions bottom out at {scores.lowest_answerable:.1f}, "
+        f"the {len(scores.unanswerable)} uncovered questions peak at {scores.highest_unanswerable:.1f}"
+    ]
+    for question, score, section_id in sorted(scores.unanswerable, key=lambda t: -t[1]):
+        lines.append(f"  {score:5.1f}  [{section_id or '-'}]  {question}")
+    lines.append(
+        "  A single score threshold would separate them."
+        if scores.separable
+        else "  The two overlap, so a score threshold alone cannot separate them."
+    )
     return "\n".join(lines)
 
 
