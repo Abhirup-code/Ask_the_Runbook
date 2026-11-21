@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from runbook.agent import NOT_FOUND, Agent
-from runbook.docs import load
+from runbook.docs import Section, load
 from runbook.llm import Reply, ToolCall
 from runbook.search import Index
 from tests.fakes import ScriptedLLM, read, say, search
@@ -186,3 +186,42 @@ def test_the_abstain_threshold_can_be_turned_off():
     result = Agent(INDEX, llm, min_coverage=0.0).ask("How do I add someone to the PagerDuty schedule?")
     assert not result.answered
     assert llm.requests, "with no threshold the model should still be asked"
+
+
+LONG = Index(
+    [
+        Section("big#0", "Big", "Checkout errors one", "checkout errors " + "alpha " * 300),
+        Section("big#1", "Big", "Checkout errors two", "checkout errors " + "beta " * 300),
+        Section("big#2", "Big", "Checkout errors three", "checkout errors " + "gamma " * 300),
+    ]
+)
+
+
+def test_long_sections_are_trimmed_to_the_budget():
+    llm = ScriptedLLM(say(NOT_FOUND), say(NOT_FOUND))
+    Agent(LONG, llm, budget=900, min_coverage=0.0).ask("checkout errors")
+    sent = llm.requests[0][-1]["content"]
+    assert len(sent) < 1300, sent[:200]
+    assert "call read_section for the rest" in sent
+
+
+def test_the_sections_that_did_not_fit_are_counted_not_hidden():
+    llm = ScriptedLLM(say(NOT_FOUND), say(NOT_FOUND))
+    Agent(LONG, llm, budget=600, min_coverage=0.0).ask("checkout errors")
+    sent = llm.requests[0][-1]["content"]
+    assert "more section(s) matched" in sent
+
+
+def test_a_section_trimmed_away_cannot_be_cited():
+    llm = ScriptedLLM(say("Run it [big#2]."), say(NOT_FOUND), say(NOT_FOUND))
+    result = Agent(LONG, llm, budget=600, min_coverage=0.0).ask("checkout errors")
+    assert not result.answered
+    said = " ".join(m["content"] for r in llm.requests for m in r if m["role"] == "user")
+    assert "never retrieved" in said and "big#2" in said
+
+
+def test_the_top_section_is_trimmed_but_never_dropped():
+    llm = ScriptedLLM(say(NOT_FOUND), say(NOT_FOUND))
+    Agent(LONG, llm, budget=50, min_coverage=0.0).ask("checkout errors")
+    sent = llm.requests[0][-1]["content"]
+    assert "[big#0]" in sent
