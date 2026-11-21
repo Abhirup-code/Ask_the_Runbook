@@ -150,3 +150,43 @@ def test_the_report_breaks_the_score_down_by_document():
     assert evals.by_document(result, 3) == ["checkout-availability  1/1", "slos                   1/2"]
     assert "slos                   1/2" in evals.report(result, 3)
     assert evals.by_document(evals.EvalResult(0, 0, [])) == []
+
+
+def test_the_abstain_rule_keeps_the_real_answers_and_drops_the_rest():
+    index = Index(SCORE_SECTIONS)
+    questions = [
+        {"question": "disk full logs", "expect": ["d#0"]},
+        {"question": "kafka topic retention", "expect": []},
+    ]
+    result = evals.abstain_check(index, questions, 0.35)
+    assert (result.kept, result.answerable) == (1, 1)
+    assert (result.rejected, result.unanswerable) == (1, 1)
+    assert result.costs_nothing
+    report = evals.abstain_report(result, 0.35)
+    assert "1/1 answerable questions still get through" in report
+    assert "WARNING" not in report
+
+
+def test_the_abstain_report_warns_when_it_costs_a_real_answer():
+    index = Index(SCORE_SECTIONS)
+    questions = [{"question": "disk kafka topic retention", "expect": ["d#0"]}]
+    result = evals.abstain_check(index, questions, 0.9)
+    assert not result.costs_nothing
+    assert "WARNING 1 answerable question(s) now rejected" in evals.abstain_report(result, 0.9)
+
+
+def test_the_abstain_report_names_what_got_through():
+    index = Index(SCORE_SECTIONS)
+    questions = [{"question": "disk full logs", "expect": []}]
+    result = evals.abstain_check(index, questions, 0.35)
+    assert result.rejected == 0
+    assert "through at 100%  disk full logs" in evals.abstain_report(result, 0.35)
+
+
+def test_the_real_corpus_abstain_rule_costs_no_answers():
+    from runbook.agent import MIN_COVERAGE
+
+    questions = evals.load_questions(ROOT / "evals/questions.jsonl")
+    result = evals.abstain_check(Index(load(ROOT / "corpus")), questions, MIN_COVERAGE)
+    assert result.costs_nothing, evals.abstain_report(result, MIN_COVERAGE)
+    assert result.rejected >= 5

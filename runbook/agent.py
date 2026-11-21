@@ -64,9 +64,26 @@ class Result:
     trace: list[str] = field(default_factory=list)  # every tool call, for debugging and the eval
 
 
+# The question has to share at least this much of its vocabulary with what search found before the
+# model is asked anything. Measured on the eval with the four sections the agent actually retrieves:
+# every threshold up to 0.40 keeps all 32 answerable questions, 0.35 and 0.40 both turn away 6 of
+# the 8 the runbooks don't cover, and 0.45 starts costing real answers. 0.35 buys the full benefit
+# with room before that edge. The score cannot do this job at all: an uncovered question can
+# outscore a covered one on a single shared word, which the eval prints.
+MIN_COVERAGE = 0.35
+
+
 class Agent:
-    def __init__(self, index: Index, llm: LLM, max_steps: int = 6, results: int = 4):
+    def __init__(
+        self,
+        index: Index,
+        llm: LLM,
+        max_steps: int = 6,
+        results: int = 4,
+        min_coverage: float = MIN_COVERAGE,
+    ):
         self.index, self.llm, self.max_steps, self.results = index, llm, max_steps, results
+        self.min_coverage = min_coverage
 
     def _search(self, query: str, seen: dict[str, Section]) -> str:
         hits = self.index.search(query, k=self.results)
@@ -108,6 +125,15 @@ class Agent:
         # messages, but they read the question. The tools stay available for follow-ups.
         trace.append(f"search_docs({{'query': {question!r}}}) [automatic]")
         context = self._search(question, seen)
+        # Nothing worth reading means nothing worth asking. Stopping here saves a model call and,
+        # more importantly, removes the chance of the model talking its way around thin context.
+        covered = self.index.coverage(question, seen.values())
+        if covered < self.min_coverage:
+            trace.append(f"abstain: the question's words are {covered:.0%} covered by what was found")
+            return self._give_up(
+                question,
+                Result(False, problems=["The runbooks don't cover this."], trace=trace),
+            )
         messages = [
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"Runbook sections:\n\n{context}\n\nQuestion: {question}"},

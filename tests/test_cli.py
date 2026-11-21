@@ -57,7 +57,7 @@ def test_ask_explains_when_ollama_is_down(capsys):
         def chat(self, messages, tools):
             raise LLMError("Could not reach Ollama")
 
-    assert main(["ask", "anything"], llm=Down()) == 2
+    assert main(["ask", "What is the availability objective?"], llm=Down()) == 2
     assert "Could not reach Ollama" in capsys.readouterr().err
 
 

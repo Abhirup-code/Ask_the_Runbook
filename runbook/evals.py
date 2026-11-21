@@ -153,6 +153,49 @@ def scores_report(scores: TopScores) -> str:
 
 
 @dataclass(frozen=True)
+class AbstainResult:
+    """What the coverage rule does to both halves of the question set: how many real answers it
+    still lets through, and how many uncovered questions it turns away before the model is asked."""
+
+    kept: int
+    answerable: int
+    rejected: int
+    unanswerable: int
+    let_through: tuple[tuple[str, float], ...] = ()  # uncovered questions that got past, and by how much
+
+    @property
+    def costs_nothing(self) -> bool:
+        return self.kept == self.answerable
+
+
+def abstain_check(index: Index, questions: list[dict], min_coverage: float, k: int = 4) -> AbstainResult:
+    def covered(question: str) -> float:
+        return index.coverage(question, [h.section for h in index.search(question, k=k)])
+
+    kept = sum(1 for q in answerable(questions) if covered(q["question"]) >= min_coverage)
+    through = tuple(
+        (q["question"], covered(q["question"]))
+        for q in unanswerable(questions)
+        if covered(q["question"]) >= min_coverage
+    )
+    totals = (len(answerable(questions)), len(unanswerable(questions)))
+    return AbstainResult(kept, totals[0], totals[1] - len(through), totals[1], through)
+
+
+def abstain_report(result: AbstainResult, min_coverage: float) -> str:
+    lines = [
+        f"Abstain at {min_coverage:.0%} coverage: "
+        f"{result.kept}/{result.answerable} answerable questions still get through, "
+        f"{result.rejected}/{result.unanswerable} uncovered ones are turned away"
+    ]
+    for question, covered in sorted(result.let_through, key=lambda t: -t[1]):
+        lines.append(f"  through at {covered:.0%}  {question}")
+    if not result.costs_nothing:
+        lines.append(f"  WARNING {result.answerable - result.kept} answerable question(s) now rejected")
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True)
 class GuardResult:
     total: int
     wrong: list[tuple[str, str, list[str]]]  # why, expected outcome, the guard's problems

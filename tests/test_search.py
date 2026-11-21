@@ -76,3 +76,26 @@ def test_why_is_empty_when_nothing_matches():
     section = Section("x#0", "Doc", "T", "nothing here")
     assert Index([section]).why("kafka", section) == ""
     assert Index([Section("x#0", "Doc", "T", "")]).why("kafka", Section("x#0", "Doc", "T", "")) == ""
+
+
+def test_coverage_counts_how_much_of_the_question_a_section_holds():
+    index = Index(SECTIONS)
+    assert index.coverage("disk full logs", [SECTIONS[0]]) == 1.0
+    assert index.coverage("disk kafka", [SECTIONS[0]]) == 0.5
+    assert index.coverage("kafka topic", [SECTIONS[0]]) == 0.0
+
+
+def test_coverage_of_several_sections_is_their_union():
+    index = Index(SECTIONS)
+    assert index.coverage("disk certificate", [SECTIONS[0]]) == 0.5
+    assert index.coverage("disk certificate", [SECTIONS[0], SECTIONS[1]]) == 1.0
+
+
+def test_coverage_of_a_question_with_no_real_words_is_zero():
+    index = Index(SECTIONS)
+    assert index.coverage("the and of", SECTIONS) == 0.0
+
+
+def test_coverage_ignores_sections_from_another_index():
+    index = Index(SECTIONS)
+    assert index.coverage("disk full", [Section("other#0", "D", "T", "disk full")]) == 0.0

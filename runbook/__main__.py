@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from runbook import evals
-from runbook.agent import Agent
+from runbook.agent import MIN_COVERAGE, Agent
 from runbook.docs import load
 from runbook.llm import DEFAULT_MODEL, DEFAULT_TIMEOUT, DEFAULT_URL, LLMError, Ollama
 from runbook.search import Index
@@ -86,9 +86,11 @@ def main(argv: list[str] | None = None, llm=None) -> int:
         result = evals.run(index, evals.answerable(questions))
         print(evals.report(result, 3))
         print(evals.scores_report(evals.top_scores(index, questions)))
+        abstain = evals.abstain_check(index, questions, MIN_COVERAGE)
+        print(evals.abstain_report(abstain, MIN_COVERAGE))
         guard = evals.run_guard(sections, evals.load_guard_cases(args.guard_cases))
         print(evals.guard_report(guard))
-        return 0 if result.score >= args.min and guard.ok else 1
+        return 0 if result.score >= args.min and guard.ok and abstain.costs_nothing else 1
 
     try:
         result = Agent(index, llm or Ollama(args.url, args.model, args.timeout)).ask(args.question)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from runbook.docs import Section
@@ -62,6 +63,22 @@ class Index:
             for term, posting in self.postings.items()
         }
         self.by_id = {s.id: s for s in sections}
+        self.index_of = {s.id: n for n, s in enumerate(sections)}
+
+    def coverage(self, query: str, sections: Iterable[Section]) -> float:
+        """What fraction of the question's distinct words appear in these sections.
+
+        A high BM25 score can come from one common word repeated often, so the score alone does
+        not say whether a result is about the question. Coverage does: a section answering "which
+        Kafka topic does checkout publish to?" would contain "kafka" and "topic", not just
+        "checkout". Found through the postings, so no extra copy of the terms is kept.
+        """
+        q = set(tokens(query))
+        if not q:
+            return 0.0
+        here = {self.index_of[s.id] for s in sections if s.id in self.index_of}
+        found = sum(1 for term in q if any(n in here for n, _ in self.postings.get(term, ())))
+        return found / len(q)
 
     def _bm25(self, term: str, tf: int, length: int) -> float:
         """One term's contribution to one section's score."""

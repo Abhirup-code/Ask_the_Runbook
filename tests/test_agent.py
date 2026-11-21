@@ -68,7 +68,7 @@ def test_unknown_tools_and_ids_are_explained_to_the_model():
         Reply(tool_calls=[ToolCall("delete_prod", {}), ToolCall("read_section", {"id": "nope#9"})]),
         say(NOT_FOUND),
     )
-    Agent(INDEX, llm).ask("anything")
+    Agent(INDEX, llm, min_coverage=0.0).ask("anything")
     outputs = [m["content"] for m in llm.requests[-1] if m["role"] == "tool"]
     assert "Unknown tool 'delete_prod'" in outputs[0]
     assert "No section with id 'nope#9'" in outputs[1]
@@ -76,13 +76,13 @@ def test_unknown_tools_and_ids_are_explained_to_the_model():
 
 def test_a_search_with_no_matches_says_so():
     llm = ScriptedLLM(search("zzzz qqqq"), say(NOT_FOUND))
-    Agent(INDEX, llm).ask("zzzz")
+    Agent(INDEX, llm, min_coverage=0.0).ask("zzzz")
     assert llm.requests[-1][-1]["content"] == "No matching sections."
 
 
 def test_the_agent_stops_after_max_steps():
     llm = ScriptedLLM(*[search("checkout")] * 3)
-    result = Agent(INDEX, llm, max_steps=3).ask("loop forever")
+    result = Agent(INDEX, llm, max_steps=3, min_coverage=0.0).ask("loop forever")
     assert not result.answered
     assert result.problems == ["Ran out of steps before answering."]
 
@@ -152,6 +152,37 @@ def test_not_found_twice_is_accepted():
 
 
 def test_not_found_with_nothing_retrieved_is_accepted_at_once():
+    # With no threshold, a question search cannot match reaches the model, and its first
+    # NOT_FOUND is taken at face value: there are no sections for it to check again.
     llm = ScriptedLLM(say(NOT_FOUND))
-    assert not Agent(INDEX, llm).ask("zzzz qqqq").answered
+    assert not Agent(INDEX, llm, min_coverage=0.0).ask("zzzz qqqq").answered
     assert len(llm.requests) == 1
+
+
+def test_nothing_retrieved_means_the_model_is_never_asked():
+    llm = ScriptedLLM()
+    assert not Agent(INDEX, llm).ask("zzzz qqqq").answered
+    assert llm.requests == []
+
+
+def test_an_uncovered_question_is_turned_away_before_the_model_is_asked():
+    llm = ScriptedLLM()  # no replies: asking the model at all would raise IndexError
+    result = Agent(INDEX, llm).ask("How do I rotate the TLS certificate for the checkout endpoint?")
+    assert not result.answered
+    assert result.problems == ["The runbooks don't cover this."]
+    assert llm.requests == []
+    assert "abstain:" in result.trace[-1] and "covered" in result.trace[-1]
+
+
+def test_a_covered_question_passes_the_abstain_rule():
+    llm = ScriptedLLM(say("Turn the chaos switch off with `scripts/chaos.sh 0 0` [checkout-availability#2]."))
+    result = Agent(INDEX, llm).ask("Is the chaos switch left on for checkout?")
+    assert result.answered
+    assert len(llm.requests) == 1
+
+
+def test_the_abstain_threshold_can_be_turned_off():
+    llm = ScriptedLLM(say(NOT_FOUND), say(NOT_FOUND))
+    result = Agent(INDEX, llm, min_coverage=0.0).ask("How do I add someone to the PagerDuty schedule?")
+    assert not result.answered
+    assert llm.requests, "with no threshold the model should still be asked"
