@@ -39,6 +39,19 @@ def test_k_limits_the_results():
     assert len(Index(SECTIONS).search("the disk certificate database", k=2)) == 2
 
 
+def test_postings_list_only_the_sections_holding_a_term():
+    index = Index(SECTIONS)
+    assert [n for n, _ in index.postings["nginx"]] == [1]
+    assert sorted(n for n, _ in index.postings["disk"]) == [0]
+    assert "kafka" not in index.postings
+
+
+def test_scoring_touches_only_sections_sharing_a_word():
+    index = Index(SECTIONS)
+    assert sorted(index.scores("TLS certificate")) == [1]
+    assert index.scores("kubernetes crashloop") == {}
+
+
 def test_get_finds_a_section_by_id():
     index = Index(SECTIONS)
     assert index.get("d#2").title == "Database slow"

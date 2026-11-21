@@ -39,35 +39,48 @@ class Hit:
 
 class Index:
     """BM25 over section title and body. The title counts twice, because headings say what a
-    section is about."""
+    section is about.
+
+    The terms are held as an inverted index: each word points at the sections containing it, and
+    how often. A query then touches only the sections that share a word with it, rather than every
+    section in the corpus, which is what lets this stay fast as a team's runbooks grow.
+    """
 
     def __init__(self, sections: list[Section], k1: float = 1.5, b: float = 0.75):
         self.sections = sections
         self.k1, self.b = k1, b
-        self.terms = [Counter(tokens(f"{s.title} {s.title} {s.doc} {s.text}")) for s in sections]
-        self.lengths = [sum(t.values()) for t in self.terms]
+        counts = [Counter(tokens(f"{s.title} {s.title} {s.doc} {s.text}")) for s in sections]
+        self.lengths = [sum(c.values()) for c in counts]
         self.avg = sum(self.lengths) / len(self.lengths)
-        df = Counter(term for t in self.terms for term in t)
-        n = len(sections)
-        self.idf = {term: math.log(1 + (n - f + 0.5) / (f + 0.5)) for term, f in df.items()}
+        self.postings: dict[str, list[tuple[int, int]]] = {}
+        for n, count in enumerate(counts):
+            for term, tf in count.items():
+                self.postings.setdefault(term, []).append((n, tf))
+        total = len(sections)
+        self.idf = {
+            term: math.log(1 + (total - len(posting) + 0.5) / (len(posting) + 0.5))
+            for term, posting in self.postings.items()
+        }
         self.by_id = {s.id: s for s in sections}
+
+    def _bm25(self, term: str, tf: int, length: int) -> float:
+        """One term's contribution to one section's score."""
+        return (
+            self.idf[term] * tf * (self.k1 + 1) / (tf + self.k1 * (1 - self.b + self.b * length / self.avg))
+        )
+
+    def scores(self, query: str) -> dict[int, float]:
+        """Every section that shares a word with the query, and its score. Found by walking the
+        postings of each query word, so sections with nothing in common are never touched."""
+        found: dict[int, float] = {}
+        for term in set(tokens(query)):
+            for n, tf in self.postings.get(term, ()):
+                found[n] = found.get(n, 0.0) + self._bm25(term, tf, self.lengths[n])
+        return found
 
     def search(self, query: str, k: int = 3) -> list[Hit]:
         """The k best sections for a query. Sections that share no words with it are left out."""
-        q = set(tokens(query))
-        hits = []
-        for section, terms, length in zip(self.sections, self.terms, self.lengths, strict=True):
-            score = 0.0
-            for term in q & terms.keys():
-                tf = terms[term]
-                score += (
-                    self.idf[term]
-                    * tf
-                    * (self.k1 + 1)
-                    / (tf + self.k1 * (1 - self.b + self.b * length / self.avg))
-                )
-            if score > 0:
-                hits.append(Hit(section, score))
+        hits = [Hit(self.sections[n], score) for n, score in self.scores(query).items() if score > 0]
         hits.sort(key=lambda h: (-h.score, h.section.id))
         return hits[:k]
 
