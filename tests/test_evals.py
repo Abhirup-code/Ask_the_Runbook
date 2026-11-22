@@ -38,9 +38,21 @@ def test_an_empty_eval_scores_zero():
 
 def test_bad_eval_lines_are_rejected(tmp_path):
     path = tmp_path / "q.jsonl"
-    path.write_text('{"question": "x", "expect": []}\n')
+    path.write_text('{"question": "x"}\n')
     with pytest.raises(ValueError, match="q.jsonl:1"):
         evals.load_questions(path)
+    path.write_text('{"question": "x", "expect": "d#0"}\n')
+    with pytest.raises(ValueError, match="q.jsonl:1"):
+        evals.load_questions(path)
+
+
+def test_an_empty_expect_list_means_the_runbooks_do_not_cover_it(tmp_path):
+    path = tmp_path / "q.jsonl"
+    path.write_text('{"question": "covered", "expect": ["d#0"]}\n{"question": "not", "expect": []}\n')
+    questions = evals.load_questions(path)
+    assert len(questions) == 2
+    assert [q["question"] for q in evals.answerable(questions)] == ["covered"]
+    assert [q["question"] for q in evals.unanswerable(questions)] == ["not"]
 
 
 def test_blank_lines_are_ignored(tmp_path):
@@ -56,8 +68,48 @@ def test_every_expected_section_exists():
 
 
 def test_retrieval_on_the_real_corpus_stays_above_the_bar():
-    result = evals.run(Index(load(ROOT / "corpus")), evals.load_questions(ROOT / "evals/questions.jsonl"))
+    questions = evals.answerable(evals.load_questions(ROOT / "evals/questions.jsonl"))
+    result = evals.run(Index(load(ROOT / "corpus")), questions)
     assert result.score >= THRESHOLD, evals.report(result, 3)
+
+
+def test_the_real_corpus_has_questions_it_cannot_answer():
+    questions = evals.load_questions(ROOT / "evals/questions.jsonl")
+    assert len(evals.unanswerable(questions)) >= 8
+
+
+SCORE_SECTIONS = [
+    Section("d#0", "Doc", "Disk full", "Delete old logs when the disk fills up."),
+    Section("d#1", "Doc", "TLS", "Renew the certificate."),
+]
+
+
+def test_top_scores_separate_when_uncovered_questions_score_lower():
+    index = Index(SCORE_SECTIONS)
+    scores = evals.top_scores(
+        index,
+        [{"question": "disk full logs", "expect": ["d#0"]}, {"question": "kafka topic", "expect": []}],
+    )
+    assert scores.highest_unanswerable == 0.0
+    assert scores.lowest_answerable > 0.0
+    assert scores.separable
+    report = evals.scores_report(scores)
+    assert "kafka topic" in report and "would separate them" in report
+
+
+def test_top_scores_report_says_so_when_the_two_overlap():
+    index = Index(SCORE_SECTIONS)
+    scores = evals.top_scores(
+        index,
+        [{"question": "logs", "expect": ["d#0"]}, {"question": "disk full logs", "expect": []}],
+    )
+    assert not scores.separable
+    assert "cannot separate them" in evals.scores_report(scores)
+
+
+def test_top_scores_of_nothing_are_zero():
+    scores = evals.TopScores((), ())
+    assert (scores.lowest_answerable, scores.highest_unanswerable, scores.separable) == (0.0, 0.0, False)
 
 
 GUARD_SECTIONS = [Section("s#0", "SLOs", "SLO", "Availability is 99.5% over 30 days.")]
@@ -98,3 +150,43 @@ def test_the_report_breaks_the_score_down_by_document():
     assert evals.by_document(result, 3) == ["checkout-availability  1/1", "slos                   1/2"]
     assert "slos                   1/2" in evals.report(result, 3)
     assert evals.by_document(evals.EvalResult(0, 0, [])) == []
+
+
+def test_the_abstain_rule_keeps_the_real_answers_and_drops_the_rest():
+    index = Index(SCORE_SECTIONS)
+    questions = [
+        {"question": "disk full logs", "expect": ["d#0"]},
+        {"question": "kafka topic retention", "expect": []},
+    ]
+    result = evals.abstain_check(index, questions, 0.35)
+    assert (result.kept, result.answerable) == (1, 1)
+    assert (result.rejected, result.unanswerable) == (1, 1)
+    assert result.costs_nothing
+    report = evals.abstain_report(result, 0.35)
+    assert "1/1 answerable questions still get through" in report
+    assert "WARNING" not in report
+
+
+def test_the_abstain_report_warns_when_it_costs_a_real_answer():
+    index = Index(SCORE_SECTIONS)
+    questions = [{"question": "disk kafka topic retention", "expect": ["d#0"]}]
+    result = evals.abstain_check(index, questions, 0.9)
+    assert not result.costs_nothing
+    assert "WARNING 1 answerable question(s) now rejected" in evals.abstain_report(result, 0.9)
+
+
+def test_the_abstain_report_names_what_got_through():
+    index = Index(SCORE_SECTIONS)
+    questions = [{"question": "disk full logs", "expect": []}]
+    result = evals.abstain_check(index, questions, 0.35)
+    assert result.rejected == 0
+    assert "through at 100%  disk full logs" in evals.abstain_report(result, 0.35)
+
+
+def test_the_real_corpus_abstain_rule_costs_no_answers():
+    from runbook.agent import MIN_COVERAGE
+
+    questions = evals.load_questions(ROOT / "evals/questions.jsonl")
+    result = evals.abstain_check(Index(load(ROOT / "corpus")), questions, MIN_COVERAGE)
+    assert result.costs_nothing, evals.abstain_report(result, MIN_COVERAGE)
+    assert result.rejected >= 5

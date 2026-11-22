@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from runbook.docs import Section, load
 from runbook.search import Index, stem, tokens
 
@@ -39,6 +41,19 @@ def test_k_limits_the_results():
     assert len(Index(SECTIONS).search("the disk certificate database", k=2)) == 2
 
 
+def test_postings_list_only_the_sections_holding_a_term():
+    index = Index(SECTIONS)
+    assert [n for n, _ in index.postings["nginx"]] == [1]
+    assert sorted(n for n, _ in index.postings["disk"]) == [0]
+    assert "kafka" not in index.postings
+
+
+def test_scoring_touches_only_sections_sharing_a_word():
+    index = Index(SECTIONS)
+    assert sorted(index.scores("TLS certificate")) == [1]
+    assert index.scores("kubernetes crashloop") == {}
+
+
 def test_get_finds_a_section_by_id():
     index = Index(SECTIONS)
     assert index.get("d#2").title == "Database slow"
@@ -63,3 +78,46 @@ def test_why_is_empty_when_nothing_matches():
     section = Section("x#0", "Doc", "T", "nothing here")
     assert Index([section]).why("kafka", section) == ""
     assert Index([Section("x#0", "Doc", "T", "")]).why("kafka", Section("x#0", "Doc", "T", "")) == ""
+
+
+def test_coverage_counts_how_much_of_the_question_a_section_holds():
+    index = Index(SECTIONS)
+    assert index.coverage("disk full logs", [SECTIONS[0]]) == 1.0
+    assert index.coverage("disk kafka", [SECTIONS[0]]) == 0.5
+    assert index.coverage("kafka topic", [SECTIONS[0]]) == 0.0
+
+
+def test_coverage_of_several_sections_is_their_union():
+    index = Index(SECTIONS)
+    assert index.coverage("disk certificate", [SECTIONS[0]]) == 0.5
+    assert index.coverage("disk certificate", [SECTIONS[0], SECTIONS[1]]) == 1.0
+
+
+def test_coverage_of_a_question_with_no_real_words_is_zero():
+    index = Index(SECTIONS)
+    assert index.coverage("the and of", SECTIONS) == 0.0
+
+
+def test_coverage_ignores_sections_from_another_index():
+    index = Index(SECTIONS)
+    assert index.coverage("disk full", [Section("other#0", "D", "T", "disk full")]) == 0.0
+
+
+def test_breakdown_names_the_words_that_earned_the_score():
+    index = Index(SECTIONS)
+    parts = index.breakdown("disk full logs", SECTIONS[0])
+    assert {term for term, _ in parts} == {"disk", "full", "log"}
+    assert [score for _, score in parts] == sorted((s for _, s in parts), reverse=True)
+    # approx, not ==: the two sums add the same floats in a different order.
+    assert sum(score for _, score in parts) == pytest.approx(index.search("disk full logs")[0].score)
+
+
+def test_breakdown_leaves_out_words_the_section_does_not_have():
+    index = Index(SECTIONS)
+    assert [term for term, _ in index.breakdown("disk kafka", SECTIONS[0])] == ["disk"]
+    assert index.breakdown("kafka topic", SECTIONS[0]) == []
+
+
+def test_breakdown_of_a_section_from_another_index_is_empty():
+    index = Index(SECTIONS)
+    assert index.breakdown("disk", Section("other#0", "D", "T", "disk")) == []

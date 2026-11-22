@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from runbook import evals
-from runbook.agent import Agent
+from runbook.agent import MIN_COVERAGE, Agent
 from runbook.docs import load
 from runbook.llm import DEFAULT_MODEL, DEFAULT_TIMEOUT, DEFAULT_URL, LLMError, Ollama
 from runbook.search import Index
@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     find.add_argument("query")
     find.add_argument("-k", type=int, default=5, help="How many sections to show (default 5)")
     find.add_argument("--why", action="store_true", help="Show the line that matched, words in CAPITALS")
+    find.add_argument("--terms", action="store_true", help="Show which query words earned each score")
     ev = sub.add_parser("eval", help="Measure retrieval and the guard (no LLM needed)")
     ev.add_argument("--questions", default=str(ROOT / "evals" / "questions.jsonl"))
     ev.add_argument("--guard-cases", default=str(ROOT / "evals" / "guard_cases.jsonl"))
@@ -79,14 +80,27 @@ def main(argv: list[str] | None = None, llm=None) -> int:
             print(f"{hit.score:5.1f}  [{hit.section.id}] {hit.section.doc} > {hit.section.title}")
             if args.why:
                 print(f"        {index.why(args.query, hit.section)}")
+            if args.terms:
+                parts = index.breakdown(args.query, hit.section)
+                print("        " + "  +  ".join(f"{term} {score:.1f}" for term, score in parts))
+        # The same number the agent abstains on, so "it says it doesn't know" can be looked into.
+        covered = index.coverage(args.query, [h.section for h in hits])
+        print(
+            f"\nCoverage: {covered:.0%} of the question's words appear in these {len(hits)} sections"
+            f" (the agent answers from {MIN_COVERAGE:.0%} up)"
+        )
         return 0
 
     if args.command == "eval":
-        result = evals.run(index, evals.load_questions(args.questions))
+        questions = evals.load_questions(args.questions)
+        result = evals.run(index, evals.answerable(questions))
         print(evals.report(result, 3))
+        print(evals.scores_report(evals.top_scores(index, questions)))
+        abstain = evals.abstain_check(index, questions, MIN_COVERAGE)
+        print(evals.abstain_report(abstain, MIN_COVERAGE))
         guard = evals.run_guard(sections, evals.load_guard_cases(args.guard_cases))
         print(evals.guard_report(guard))
-        return 0 if result.score >= args.min and guard.ok else 1
+        return 0 if result.score >= args.min and guard.ok and abstain.costs_nothing else 1
 
     try:
         result = Agent(index, llm or Ollama(args.url, args.model, args.timeout)).ask(args.question)

@@ -30,3 +30,11 @@
 {"question": "Why did Grafana say dashboard not found?", "expect": ["postmortem-2026-11-09-game-day#7", "postmortem-2026-11-09-game-day#4"]}
 {"question": "How much memory should Docker Desktop get?", "expect": ["postmortem-2026-11-09-game-day#8"]}
 {"question": "Should I look for the root cause before rolling back?", "expect": ["checkout-availability#3"]}
+{"question": "How do I rotate the TLS certificate for the checkout endpoint?", "expect": []}
+{"question": "Which Kafka topic does checkout publish orders to?", "expect": []}
+{"question": "How do I restore the orders database from a backup?", "expect": []}
+{"question": "Who is on call this week and who is the secondary?", "expect": []}
+{"question": "How do I add someone to the PagerDuty schedule?", "expect": []}
+{"question": "What is the DNS record for the checkout API?", "expect": []}
+{"question": "How do I clear the Redis cache for a stuck checkout session?", "expect": []}
+{"question": "What is the retention period for the application logs?", "expect": []}
