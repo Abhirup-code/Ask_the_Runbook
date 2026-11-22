@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from runbook.docs import Section, load
 from runbook.search import Index, stem, tokens
 
@@ -106,7 +108,8 @@ def test_breakdown_names_the_words_that_earned_the_score():
     parts = index.breakdown("disk full logs", SECTIONS[0])
     assert {term for term, _ in parts} == {"disk", "full", "log"}
     assert [score for _, score in parts] == sorted((s for _, s in parts), reverse=True)
-    assert sum(score for _, score in parts) == index.search("disk full logs")[0].score
+    # approx, not ==: the two sums add the same floats in a different order.
+    assert sum(score for _, score in parts) == pytest.approx(index.search("disk full logs")[0].score)
 
 
 def test_breakdown_leaves_out_words_the_section_does_not_have():
