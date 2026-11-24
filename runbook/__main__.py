@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from runbook import evals, lint
-from runbook.agent import MIN_COVERAGE, Agent
+from runbook.agent import BUDGET, MIN_COVERAGE, Agent
 from runbook.docs import load
 from runbook.llm import DEFAULT_MODEL, DEFAULT_TIMEOUT, DEFAULT_URL, LLMError, Ollama
 from runbook.search import Index
@@ -58,6 +58,18 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     )
     ask.add_argument("--trace", action="store_true", help="Show every tool call the agent made")
     ask.add_argument("--json", action="store_true", help="Print one JSON object, for a chat bot or a script")
+    ask.add_argument(
+        "--min-coverage",
+        type=float,
+        default=MIN_COVERAGE,
+        help=f"Refuse below this much of the question's words (0 to 1, default {MIN_COVERAGE})",
+    )
+    ask.add_argument(
+        "--budget",
+        type=int,
+        default=BUDGET,
+        help=f"Characters of runbook text to send at once (default {BUDGET})",
+    )
     find = sub.add_parser("search", help="Show the best matching sections (no LLM needed)")
     find.add_argument("query")
     find.add_argument("-k", type=int, default=5, help="How many sections to show (default 5)")
@@ -118,7 +130,13 @@ def main(argv: list[str] | None = None, llm=None) -> int:
         return 0 if result.score >= args.min and guard.ok and abstain.costs_nothing else 1
 
     try:
-        result = Agent(index, llm or Ollama(args.url, args.model, args.timeout)).ask(args.question)
+        agent = Agent(
+            index,
+            llm or Ollama(args.url, args.model, args.timeout),
+            min_coverage=args.min_coverage,
+            budget=args.budget,
+        )
+        result = agent.ask(args.question)
     except LLMError as exc:
         print(exc, file=sys.stderr)
         return 2

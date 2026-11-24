@@ -115,6 +115,10 @@ python -m runbook ask "What does a burn rate of 14.4 mean?"
 Use `--model` (or `RUNBOOK_MODEL`) for another model, `--url` (or `OLLAMA_URL`) for another Ollama
 server, and `--docs` to point it at your own folder of Markdown runbooks.
 
+`--min-coverage` and `--budget` set the two numbers that decide when it refuses and how much runbook
+text it sends at once. The defaults were measured on this corpus, so another team's runbooks deserve
+their own look: raise `--min-coverage` to refuse more, and `--budget` to fit a bigger context window.
+
 To use it from a chat bot or a script, add `--json`. It prints one object with the answer, its sources,
 and the trace, or, when there is no answer, `"answer": null` with the problems and the closest sections.
 The exit code is 0 for an answer and 1 for none.

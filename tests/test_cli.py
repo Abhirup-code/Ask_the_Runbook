@@ -143,3 +143,42 @@ def test_ask_json_says_whether_it_abstained(capsys):
     assert "tls" in payload["missing_words"]
     assert 0 < payload["coverage"] < 0.35
     assert payload["closest_sections"]
+
+
+def test_min_coverage_zero_sends_an_uncovered_question_to_the_model(capsys):
+    llm = ScriptedLLM(say("NOT_FOUND"), say("NOT_FOUND"))
+    code = main(
+        ["ask", "How do I rotate the TLS certificate?", "--min-coverage", "0", "--json"],
+        llm=llm,
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert payload["abstained"] is False  # the model was asked, so this is not an abstain
+    assert llm.requests
+
+
+def test_a_stricter_threshold_refuses_a_question_the_default_would_answer(capsys):
+    # This one covers 57% of its own words, so the default 35% lets it through and 80% does not.
+    llm = ScriptedLLM()
+    code = main(
+        [
+            "ask",
+            "Checkout is throwing 500 errors. What should I check first?",
+            "--min-coverage",
+            "0.8",
+            "--json",
+        ],
+        llm=llm,
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert payload["abstained"] is True
+    assert llm.requests == []
+
+
+def test_a_small_budget_trims_what_the_model_is_sent(capsys):
+    llm = ScriptedLLM(say("NOT_FOUND"), say("NOT_FOUND"))
+    main(["ask", "Is the chaos switch left on for checkout?", "--budget", "400"], llm=llm)
+    sent = llm.requests[0][-1]["content"]
+    assert "call read_section for the rest" in sent
+    assert len(sent) < 1200
