@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from runbook import evals
+from runbook import evals, lint
 from runbook.agent import MIN_COVERAGE, Agent
 from runbook.docs import load
 from runbook.llm import DEFAULT_MODEL, DEFAULT_TIMEOUT, DEFAULT_URL, LLMError, Ollama
@@ -62,7 +62,14 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     ev.add_argument("--questions", default=str(ROOT / "evals" / "questions.jsonl"))
     ev.add_argument("--guard-cases", default=str(ROOT / "evals" / "guard_cases.jsonl"))
     ev.add_argument("--min", type=float, default=0.0, help="Exit 1 if retrieval scores below this (0 to 1)")
+    sub.add_parser("lint", help="Check the runbooks for problems that hurt retrieval and citation")
     args = parser.parse_args(argv)
+
+    # Linting reads the files itself: a folder worth linting may be one the index refuses.
+    if args.command == "lint":
+        problems = lint.check(args.docs)
+        print(lint.report(problems, args.docs))
+        return 1 if problems else 0
 
     try:
         sections = load(args.docs)

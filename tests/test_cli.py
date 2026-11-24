@@ -111,3 +111,20 @@ def test_search_reports_the_coverage_the_agent_abstains_on(capsys):
     assert "Coverage: 100% of the question's words" in capsys.readouterr().out
     assert main(["search", "Which Kafka topic does checkout publish orders to?", "-k", "2"]) == 0
     assert "Coverage: 40% of the question's words" in capsys.readouterr().out
+
+
+def test_lint_passes_on_the_projects_own_runbooks(capsys):
+    assert main(["lint"]) == 0
+    assert "No problems found" in capsys.readouterr().out
+
+
+def test_lint_exits_one_and_names_the_problem(tmp_path, capsys):
+    (tmp_path / "r.md").write_text("# Doc\n\n## Thin\n\ntoo short.\n", encoding="utf-8")
+    assert main(["--docs", str(tmp_path), "lint"]) == 1
+    assert "too little to answer from" in capsys.readouterr().out
+
+
+def test_lint_reads_a_folder_the_index_would_refuse(tmp_path, capsys):
+    # An empty folder is an error for every other command; lint is how you find out why.
+    assert main(["--docs", str(tmp_path), "lint"]) == 0
+    assert "No problems found" in capsys.readouterr().out

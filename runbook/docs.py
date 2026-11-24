@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,24 @@ class Section:
         return f"[{self.id}] {self.doc} > {self.title}\n{self.text}"
 
 
+def parse(markdown: str) -> Iterator[tuple[int | None, str, str]]:
+    """Each line as (heading level or None, heading text, raw line).
+
+    The one place that decides what a heading is, so the splitter and the linter cannot drift
+    apart about it. Lines starting with # inside fenced code blocks are comments (PromQL, shell),
+    not headings.
+    """
+    in_code = False
+    for line in markdown.splitlines():
+        if FENCE.match(line):
+            in_code = not in_code
+        match = None if in_code else HEADING.match(line)
+        if match:
+            yield len(match.group(1)), match.group(2), line
+        else:
+            yield None, "", line
+
+
 def split(stem: str, markdown: str) -> list[Section]:
     """Splits one document at its headings, any level from # to ######.
 
@@ -33,19 +52,16 @@ def split(stem: str, markdown: str) -> list[Section]:
     """
     doc_title = stem
     sections: list[tuple[str, list[str]]] = []
-    title, body, in_code = None, [], False
-    for line in markdown.splitlines():
-        if FENCE.match(line):
-            in_code = not in_code
-        match = None if in_code else HEADING.match(line)
-        if match and len(match.group(1)) == 1 and doc_title == stem:
-            doc_title = match.group(2)
+    title, body = None, []
+    for level, heading, line in parse(markdown):
+        if level == 1 and doc_title == stem:
+            doc_title = heading
             title = doc_title
             continue
-        if match:
+        if level:
             if title is not None:
                 sections.append((title, body))
-            title, body = match.group(2), []
+            title, body = heading, []
             continue
         body.append(line)
     if title is not None or any(line.strip() for line in body):
