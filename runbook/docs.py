@@ -6,7 +6,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-HEADING = re.compile(r"^(#{1,3})\s+(.+?)\s*$")
+# Every ATX level, not just the first three: a runbook that numbers its steps with #### had the
+# whole lot swallowed into its parent section, which then cited as one block and crowded the
+# retrieved context. The optional trailing run of #s is Markdown's closing sequence, and leaving
+# it on put "2. Check the causes ##" in a title that the index counts twice.
+HEADING = re.compile(r"^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$")
 FENCE = re.compile(r"^\s*(```|~~~)")
 
 
@@ -22,7 +26,7 @@ class Section:
 
 
 def split(stem: str, markdown: str) -> list[Section]:
-    """Splits one document at its #, ##, and ### headings.
+    """Splits one document at its headings, any level from # to ######.
 
     Lines starting with # inside fenced code blocks are comments (PromQL, shell), not headings.
     Text before the first sub-heading becomes section 0, titled like the document.

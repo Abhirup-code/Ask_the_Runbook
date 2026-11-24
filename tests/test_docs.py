@@ -50,3 +50,27 @@ def test_the_corpus_loads_with_unique_ids():
 def test_an_empty_folder_is_an_error(tmp_path):
     with pytest.raises(ValueError, match="No Markdown sections"):
         load(tmp_path)
+
+
+def test_headings_below_the_third_level_are_sections_too():
+    sections = split("r", "# Doc\n\n## Step\n\nintro\n\n#### Detail\n\nthe detail\n")
+    assert [(s.title, s.text) for s in sections] == [
+        ("Step", "intro"),
+        ("Detail", "the detail"),
+    ]
+
+
+def test_a_closing_hash_run_is_not_part_of_the_title():
+    sections = split("r", "# Doc #\n\n## Section ##\n\nbody\n")
+    assert sections[0].doc == "Doc"
+    assert sections[0].title == "Section"
+
+
+def test_a_hash_inside_a_title_is_kept():
+    sections = split("r", "# Doc\n\n## Issue #42 follow-up\n\nbody\n")
+    assert sections[0].title == "Issue #42 follow-up"
+
+
+def test_every_heading_level_splits():
+    md = "# D\n\n## A\n\na\n\n### B\n\nb\n\n#### C\n\nc\n\n##### E\n\ne\n\n###### F\n\nf\n"
+    assert [s.title for s in split("r", md)] == ["A", "B", "C", "E", "F"]
