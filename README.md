@@ -67,11 +67,14 @@ question ──> search ──under 35% of the question's words found──> "I 
                        fail ──> one retry with the reasons ──> still failing: "I don't know" + where to look
 ```
 
-1. **Sections, not files.** Each runbook is split at its headings into sections with short ids like
-   `checkout-availability#2`. `#` lines inside code blocks are PromQL comments, not headings.
+1. **Sections, not files.** Each runbook is split at every heading level into sections with short ids
+   like `checkout-availability#2`. `#` lines inside code blocks are PromQL comments, not headings, and
+   Markdown's closing `##` is not part of a title. `runbook lint` reports the ways a runbook breaks
+   this: a heading with nothing under it never reaches the index at all.
 2. **Search with BM25**, the ranking classic search engines use. No embedding model to download and
    nothing to host. Section titles count twice, since a heading says what a section is about. The
-   terms live in an inverted index, so a question only touches the sections that share a word with it.
+   terms live in an inverted index, so a question only touches the sections that share a word with it,
+   and words are folded with Porter's first two steps, so "paging" and "pages" both reach "page".
 3. **Abstain before spending a model call.** If under 35% of the question's own words appear in what
    search found, the runbooks do not cover it and the model is never asked. The score cannot do this
    job: see [Measuring it](#measuring-it).
@@ -98,6 +101,7 @@ pip install -r requirements-dev.txt
 python -m runbook search "rollback a bad deploy"
 python -m runbook search "chaos switch left on" -k 3 --why    # show the line that matched
 python -m runbook search "chaos switch left on" --terms        # show which words earned the score
+python -m runbook lint                                         # check the runbooks themselves
 python -m runbook eval
 ```
 
@@ -112,8 +116,13 @@ Use `--model` (or `RUNBOOK_MODEL`) for another model, `--url` (or `OLLAMA_URL`) 
 server, and `--docs` to point it at your own folder of Markdown runbooks.
 
 To use it from a chat bot or a script, add `--json`. It prints one object with the answer, its sources,
-and the trace, or, when the guard blocked the answer, `"answer": null` with the problems and the closest
-sections. The exit code is 0 for an answer and 1 for none:
+and the trace, or, when there is no answer, `"answer": null` with the problems and the closest sections.
+The exit code is 0 for an answer and 1 for none.
+
+`abstained` says which kind of no it is, which decides what to do about it. True means the runbooks never
+covered the question and somebody should write the page; false means the model answered and the guard
+threw the answer out, which is a different problem with a different fix. `coverage` and `missing_words`
+come with it either way:
 
 ```json
 {
@@ -122,6 +131,9 @@ sections. The exit code is 0 for an answer and 1 for none:
   "answer": "At 14.4x the whole month's budget is gone in about 2 days [checkout-availability#0].",
   "sources": [{"id": "checkout-availability#0", "doc": "Runbook: CheckoutAvailabilityBudgetBurn", "title": "Runbook: CheckoutAvailabilityBudgetBurn"}],
   "problems": [],
+  "abstained": false,
+  "coverage": 1.0,
+  "missing_words": [],
   "closest_sections": [],
   "trace": ["search_docs({'query': 'What does a burn rate of 14.4 mean?'}) [automatic]"]
 }
@@ -141,7 +153,7 @@ per runbook, so a document that is hard to search stands out from search being b
 
 ```
 Retrieval hit@3: 30/32 (94%)
-  hit@1 75%, hit@5 97%, MRR 0.85
+  hit@1 78%, hit@5 97%, MRR 0.87
   checkout-availability           7/8
   checkout-latency                6/6
   postmortem-2026-11-09-game-day  10/11
@@ -174,6 +186,10 @@ Top score: answerable questions bottom out at 2.9, the 8 uncovered questions pea
 `--terms` says why in one line: `order 3.2 + checkout 0.4`. The stemmer turns "orders" into "order",
 two runbook headings end with "in this order", and so a heading about ordered steps carries almost
 the whole score of a question about Kafka.
+
+An abstain names the words it could not find anywhere, in the asker's own spelling, so the answer is
+something to act on: "Nothing in them mentions: tls, certificate, rotate" says the subject is known
+here and the task is not. `search` prints the same line under its coverage figure.
 
 **Term coverage** works where the score does not. It asks how much of what the user typed is actually
 in what search found, which a single repeated common word cannot fake:
@@ -216,6 +232,11 @@ and then fails is worth more than one that was never tested.
   latency runbook from someone asking about latency.
 - **Weighting the headings differently** (title counted three times, dropping the document title).
   Every variant moved hit@1 by one question in either direction, which on 32 questions is noise.
+
+Fixing the stemmer was the exception that proves the rule. "paging" used to stem to "pag", which
+matches neither "page" nor "pages", and Porter's first two steps fixed that and 22 other pairs in this
+corpus. It moved hit@1 from 75% to 78% and MRR from 0.85 to 0.87, which on 32 questions is one
+question. The reason to take it was that the old behaviour was wrong, not the number.
 
 The honest conclusion is that this corpus and this eval are too small to tune ranking against. What
 helped was measuring what the tool refuses to do, not chasing another point of hit@3.
