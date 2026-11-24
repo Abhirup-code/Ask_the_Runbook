@@ -24,6 +24,52 @@ def test_stemming_folds_word_forms_together():
     assert stem("is") == "is"  # too short to strip
 
 
+@pytest.mark.parametrize(
+    ("base", "inflected"),
+    [
+        ("page", "paged"),
+        ("page", "pages"),
+        ("page", "paging"),
+        ("fire", "fired"),
+        ("fire", "fires"),
+        ("time", "timed"),
+        ("time", "times"),
+        ("cause", "causes"),
+        ("failure", "failures"),
+        ("minute", "minutes"),
+        ("mitigate", "mitigated"),
+    ],
+)
+def test_a_silent_e_survives_its_own_inflections(base, inflected):
+    # Chopping the suffix off "paging" leaves "pag", which matches neither "page" nor "pages".
+    assert stem(base) == stem(inflected) == base
+
+
+def test_a_doubled_consonant_is_reduced():
+    assert stem("running") == stem("runs") == "run"
+    assert stem("stopped") == stem("stops") == "stop"
+
+
+@pytest.mark.parametrize(
+    ("one", "other"),
+    [
+        ("second", "seconds"),  # no e to restore
+        ("checkout", "checkouts"),
+        ("burn", "burning"),
+        ("slo", "slos"),
+    ],
+)
+def test_words_without_a_silent_e_are_left_alone(one, other):
+    assert stem(one) == stem(other) == one
+
+
+def test_double_s_and_short_words_are_not_stripped():
+    assert stem("business") == "business"
+    assert stem("miss") == stem("misses") == stem("missing") == "miss"
+    assert stem("slos") == "slo"
+    assert stem("its") == "its"  # len 3, too short to lose the s
+
+
 def test_tokens_drop_stopwords_and_punctuation():
     assert tokens("What is the p95 latency?") == ["p95", "latency"]
 
@@ -121,3 +167,28 @@ def test_breakdown_leaves_out_words_the_section_does_not_have():
 def test_breakdown_of_a_section_from_another_index_is_empty():
     index = Index(SECTIONS)
     assert index.breakdown("disk", Section("other#0", "D", "T", "disk")) == []
+
+
+def test_missing_words_names_what_is_absent_in_the_askers_own_words():
+    index = Index(SECTIONS)
+    assert index.missing_words("kafka topic", SECTIONS) == ["kafka", "topic"]
+    assert index.missing_words("disk full", SECTIONS) == []
+    # The asker's spelling comes back, not the stem.
+    assert index.missing_words("kafka topics", SECTIONS) == ["kafka", "topics"]
+
+
+def test_missing_words_ignores_stopwords_and_repeats():
+    index = Index(SECTIONS)
+    assert index.missing_words("what is the kafka and the kafka topic", SECTIONS) == ["kafka", "topic"]
+
+
+def test_missing_words_is_relative_to_the_sections_given():
+    index = Index(SECTIONS)
+    assert index.missing_words("disk certificate", [SECTIONS[0]]) == ["certificate"]
+    assert index.missing_words("disk certificate", SECTIONS) == []
+
+
+def test_words_pairs_each_word_with_its_stem():
+    from runbook.search import words
+
+    assert words("The pages fired") == [("pages", "page"), ("fired", "fire")]

@@ -12,8 +12,8 @@ import json
 import sys
 from pathlib import Path
 
-from runbook import evals
-from runbook.agent import MIN_COVERAGE, Agent
+from runbook import evals, lint
+from runbook.agent import BUDGET, MIN_COVERAGE, Agent
 from runbook.docs import load
 from runbook.llm import DEFAULT_MODEL, DEFAULT_TIMEOUT, DEFAULT_URL, LLMError, Ollama
 from runbook.search import Index
@@ -33,6 +33,11 @@ def as_json(question: str, result) -> dict:
         "answer": result.answer if result.answered else None,
         "sources": [source(s) for s in result.citations],
         "problems": result.problems,
+        # Why there is no answer, which decides what the caller should do about it: write the
+        # missing runbook, or look at why the model's answer failed the guard.
+        "abstained": result.abstained,
+        "coverage": round(result.coverage, 3),
+        "missing_words": result.missing_words,
         "closest_sections": [source(s) for s in result.suggestions],
         "trace": result.trace,
     }
@@ -53,6 +58,18 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     )
     ask.add_argument("--trace", action="store_true", help="Show every tool call the agent made")
     ask.add_argument("--json", action="store_true", help="Print one JSON object, for a chat bot or a script")
+    ask.add_argument(
+        "--min-coverage",
+        type=float,
+        default=MIN_COVERAGE,
+        help=f"Refuse below this much of the question's words (0 to 1, default {MIN_COVERAGE})",
+    )
+    ask.add_argument(
+        "--budget",
+        type=int,
+        default=BUDGET,
+        help=f"Characters of runbook text to send at once (default {BUDGET})",
+    )
     find = sub.add_parser("search", help="Show the best matching sections (no LLM needed)")
     find.add_argument("query")
     find.add_argument("-k", type=int, default=5, help="How many sections to show (default 5)")
@@ -62,7 +79,14 @@ def main(argv: list[str] | None = None, llm=None) -> int:
     ev.add_argument("--questions", default=str(ROOT / "evals" / "questions.jsonl"))
     ev.add_argument("--guard-cases", default=str(ROOT / "evals" / "guard_cases.jsonl"))
     ev.add_argument("--min", type=float, default=0.0, help="Exit 1 if retrieval scores below this (0 to 1)")
+    sub.add_parser("lint", help="Check the runbooks for problems that hurt retrieval and citation")
     args = parser.parse_args(argv)
+
+    # Linting reads the files itself: a folder worth linting may be one the index refuses.
+    if args.command == "lint":
+        problems = lint.check(args.docs)
+        print(lint.report(problems, args.docs))
+        return 1 if problems else 0
 
     try:
         sections = load(args.docs)
@@ -85,10 +109,13 @@ def main(argv: list[str] | None = None, llm=None) -> int:
                 print("        " + "  +  ".join(f"{term} {score:.1f}" for term, score in parts))
         # The same number the agent abstains on, so "it says it doesn't know" can be looked into.
         covered = index.coverage(args.query, [h.section for h in hits])
-        print(
+        line = (
             f"\nCoverage: {covered:.0%} of the question's words appear in these {len(hits)} sections"
             f" (the agent answers from {MIN_COVERAGE:.0%} up)"
         )
+        if absent := index.missing_words(args.query, [h.section for h in hits]):
+            line += f"\nNot found anywhere in them: {', '.join(absent)}"
+        print(line)
         return 0
 
     if args.command == "eval":
@@ -103,7 +130,13 @@ def main(argv: list[str] | None = None, llm=None) -> int:
         return 0 if result.score >= args.min and guard.ok and abstain.costs_nothing else 1
 
     try:
-        result = Agent(index, llm or Ollama(args.url, args.model, args.timeout)).ask(args.question)
+        agent = Agent(
+            index,
+            llm or Ollama(args.url, args.model, args.timeout),
+            min_coverage=args.min_coverage,
+            budget=args.budget,
+        )
+        result = agent.ask(args.question)
     except LLMError as exc:
         print(exc, file=sys.stderr)
         return 2
