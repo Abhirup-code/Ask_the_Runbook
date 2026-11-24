@@ -167,3 +167,28 @@ def test_breakdown_leaves_out_words_the_section_does_not_have():
 def test_breakdown_of_a_section_from_another_index_is_empty():
     index = Index(SECTIONS)
     assert index.breakdown("disk", Section("other#0", "D", "T", "disk")) == []
+
+
+def test_missing_words_names_what_is_absent_in_the_askers_own_words():
+    index = Index(SECTIONS)
+    assert index.missing_words("kafka topic", SECTIONS) == ["kafka", "topic"]
+    assert index.missing_words("disk full", SECTIONS) == []
+    # The asker's spelling comes back, not the stem.
+    assert index.missing_words("kafka topics", SECTIONS) == ["kafka", "topics"]
+
+
+def test_missing_words_ignores_stopwords_and_repeats():
+    index = Index(SECTIONS)
+    assert index.missing_words("what is the kafka and the kafka topic", SECTIONS) == ["kafka", "topic"]
+
+
+def test_missing_words_is_relative_to_the_sections_given():
+    index = Index(SECTIONS)
+    assert index.missing_words("disk certificate", [SECTIONS[0]]) == ["certificate"]
+    assert index.missing_words("disk certificate", SECTIONS) == []
+
+
+def test_words_pairs_each_word_with_its_stem():
+    from runbook.search import words
+
+    assert words("The pages fired") == [("pages", "page"), ("fired", "fire")]

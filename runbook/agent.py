@@ -157,10 +157,14 @@ class Agent:
         covered = self.index.coverage(question, seen.values())
         if covered < self.min_coverage:
             trace.append(f"abstain: the question's words are {covered:.0%} covered by what was found")
-            return self._give_up(
-                question,
-                Result(False, problems=["The runbooks don't cover this."], trace=trace),
-            )
+            # Naming the words that are nowhere in the corpus turns "no" into something to act on:
+            # either the runbook is genuinely missing, or the question used the team's other word
+            # for the thing and is worth asking again.
+            absent = self.index.missing_words(question, seen.values())
+            problem = "The runbooks don't cover this."
+            if absent:
+                problem += f" Nothing in them mentions: {', '.join(absent)}."
+            return self._give_up(question, Result(False, problems=[problem], trace=trace))
         messages = [
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"Runbook sections:\n\n{context}\n\nQuestion: {question}"},

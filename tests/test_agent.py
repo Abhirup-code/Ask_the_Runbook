@@ -60,7 +60,7 @@ def test_not_found_is_an_honest_no():
     llm = ScriptedLLM(search("kafka consumer lag"), say(NOT_FOUND), say(NOT_FOUND))
     result = Agent(INDEX, llm).ask("How do I fix Kafka consumer lag?")
     assert not result.answered
-    assert result.problems == ["The runbooks don't cover this."]
+    assert result.problems[0].startswith("The runbooks don't cover this.")
 
 
 def test_unknown_tools_and_ids_are_explained_to_the_model():
@@ -169,7 +169,7 @@ def test_an_uncovered_question_is_turned_away_before_the_model_is_asked():
     llm = ScriptedLLM()  # no replies: asking the model at all would raise IndexError
     result = Agent(INDEX, llm).ask("How do I rotate the TLS certificate for the checkout endpoint?")
     assert not result.answered
-    assert result.problems == ["The runbooks don't cover this."]
+    assert result.problems[0].startswith("The runbooks don't cover this.")
     assert llm.requests == []
     assert "abstain:" in result.trace[-1] and "covered" in result.trace[-1]
 
@@ -225,3 +225,21 @@ def test_the_top_section_is_trimmed_but_never_dropped():
     Agent(LONG, llm, budget=50, min_coverage=0.0).ask("checkout errors")
     sent = llm.requests[0][-1]["content"]
     assert "[big#0]" in sent
+
+
+def test_an_abstain_names_the_words_the_runbooks_do_not_have():
+    llm = ScriptedLLM()
+    result = Agent(INDEX, llm).ask("How do I rotate the TLS certificate for the checkout endpoint?")
+    assert not result.answered
+    assert "Nothing in them mentions:" in result.problems[0]
+    assert "tls" in result.problems[0] and "certificate" in result.problems[0]
+    # The words that ARE in the runbooks are not listed as missing.
+    assert "checkout" not in result.problems[0]
+    assert llm.requests == []
+
+
+def test_an_abstain_with_nothing_retrieved_still_says_what_was_missing():
+    llm = ScriptedLLM()
+    result = Agent(INDEX, llm).ask("zzzz qqqq")
+    assert not result.answered
+    assert "zzzz" in result.problems[0]

@@ -85,8 +85,14 @@ def stem(word: str) -> str:
     return word
 
 
+def words(text: str) -> list[tuple[str, str]]:
+    """Each meaningful word as it was written, paired with its stem. Keeping the original lets a
+    message name the words someone actually typed rather than stems like "pag"."""
+    return [(w, stem(w)) for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in STOPWORDS]
+
+
 def tokens(text: str) -> list[str]:
-    return [stem(w) for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in STOPWORDS]
+    return [stemmed for _, stemmed in words(text)]
 
 
 @dataclass(frozen=True)
@@ -136,6 +142,22 @@ class Index:
         here = {self.index_of[s.id] for s in sections if s.id in self.index_of}
         found = sum(1 for term in q if any(n in here for n, _ in self.postings.get(term, ())))
         return found / len(q)
+
+    def missing_words(self, query: str, sections: Iterable[Section]) -> list[str]:
+        """The question's words that appear nowhere in these sections, as the asker wrote them.
+
+        This is the other half of coverage. Coverage says how much was found; this says what was
+        not, which is the part worth telling someone when the answer is that nobody knows.
+        """
+        here = {self.index_of[s.id] for s in sections if s.id in self.index_of}
+        absent, seen = [], set()
+        for word, stemmed in words(query):
+            if stemmed in seen:
+                continue
+            seen.add(stemmed)
+            if not any(n in here for n, _ in self.postings.get(stemmed, ())):
+                absent.append(word)
+        return absent
 
     def _bm25(self, term: str, tf: int, length: int) -> float:
         """One term's contribution to one section's score."""

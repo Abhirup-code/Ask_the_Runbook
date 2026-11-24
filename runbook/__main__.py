@@ -85,10 +85,13 @@ def main(argv: list[str] | None = None, llm=None) -> int:
                 print("        " + "  +  ".join(f"{term} {score:.1f}" for term, score in parts))
         # The same number the agent abstains on, so "it says it doesn't know" can be looked into.
         covered = index.coverage(args.query, [h.section for h in hits])
-        print(
+        line = (
             f"\nCoverage: {covered:.0%} of the question's words appear in these {len(hits)} sections"
             f" (the agent answers from {MIN_COVERAGE:.0%} up)"
         )
+        if absent := index.missing_words(args.query, [h.section for h in hits]):
+            line += f"\nNot found anywhere in them: {', '.join(absent)}"
+        print(line)
         return 0
 
     if args.command == "eval":
