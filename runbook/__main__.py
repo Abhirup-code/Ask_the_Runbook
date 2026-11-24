@@ -33,6 +33,11 @@ def as_json(question: str, result) -> dict:
         "answer": result.answer if result.answered else None,
         "sources": [source(s) for s in result.citations],
         "problems": result.problems,
+        # Why there is no answer, which decides what the caller should do about it: write the
+        # missing runbook, or look at why the model's answer failed the guard.
+        "abstained": result.abstained,
+        "coverage": round(result.coverage, 3),
+        "missing_words": result.missing_words,
         "closest_sections": [source(s) for s in result.suggestions],
         "trace": result.trace,
     }

@@ -243,3 +243,26 @@ def test_an_abstain_with_nothing_retrieved_still_says_what_was_missing():
     result = Agent(INDEX, llm).ask("zzzz qqqq")
     assert not result.answered
     assert "zzzz" in result.problems[0]
+
+
+def test_an_abstain_is_marked_as_one_with_its_coverage():
+    result = Agent(INDEX, ScriptedLLM()).ask("How do I rotate the TLS certificate for the checkout endpoint?")
+    assert result.abstained
+    assert 0 < result.coverage < 0.35
+    assert "tls" in result.missing_words
+
+
+def test_a_guard_failure_is_not_an_abstain():
+    llm = ScriptedLLM(say("Turn it off."), say("Turn it off."))
+    result = Agent(INDEX, llm).ask("Is the chaos switch left on for checkout?")
+    assert not result.answered
+    assert not result.abstained  # the model was asked and its answer was rejected
+    assert result.coverage >= 0.35
+
+
+def test_an_answered_question_still_reports_its_coverage():
+    llm = ScriptedLLM(say("Run `scripts/chaos.sh 0 0` [checkout-availability#2]."))
+    result = Agent(INDEX, llm).ask("Is the chaos switch left on for checkout?")
+    assert result.answered
+    assert result.coverage >= 0.35
+    assert not result.abstained

@@ -128,3 +128,18 @@ def test_lint_reads_a_folder_the_index_would_refuse(tmp_path, capsys):
     # An empty folder is an error for every other command; lint is how you find out why.
     assert main(["--docs", str(tmp_path), "lint"]) == 0
     assert "No problems found" in capsys.readouterr().out
+
+
+def test_ask_json_says_whether_it_abstained(capsys):
+    # An abstain never reaches the model, so an LLM with no scripted replies is right here.
+    code = main(
+        ["ask", "How do I rotate the TLS certificate for the checkout endpoint?", "--json"],
+        llm=ScriptedLLM(),
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert payload["abstained"] is True
+    assert payload["answered"] is False
+    assert "tls" in payload["missing_words"]
+    assert 0 < payload["coverage"] < 0.35
+    assert payload["closest_sections"]

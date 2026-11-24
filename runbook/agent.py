@@ -69,6 +69,13 @@ class Result:
     problems: list[str] = field(default_factory=list)
     suggestions: list[Section] = field(default_factory=list)  # where to look when there is no answer
     trace: list[str] = field(default_factory=list)  # every tool call, for debugging and the eval
+    # Two different noes. abstained means the runbooks never covered it, so somebody should write
+    # the page; otherwise a no came from the guard rejecting what the model said, which is a
+    # different problem with a different fix. A caller that cannot tell them apart treats a gap in
+    # the documentation as a flaky model.
+    abstained: bool = False
+    coverage: float = 0.0
+    missing_words: list[str] = field(default_factory=list)
 
 
 # The question has to share at least this much of its vocabulary with what search found before the
@@ -139,8 +146,12 @@ class Agent:
             return self._read(str(args.get("id", "")), seen)
         return f"Unknown tool {name!r}. Use search_docs or read_section."
 
-    def _give_up(self, question: str, result: Result) -> Result:
+    def _give_up(self, question: str, result: Result, seen: dict[str, Section], covered: float) -> Result:
         result.suggestions = [h.section for h in self.index.search(question, k=3)]
+        result.coverage = covered
+        # Useful on every no, not just an abstain: when the model says it cannot answer, the words
+        # that were nowhere in the retrieved sections are the first thing to look at.
+        result.missing_words = result.missing_words or self.index.missing_words(question, seen.values())
         return result
 
     def ask(self, question: str) -> Result:
@@ -164,7 +175,12 @@ class Agent:
             problem = "The runbooks don't cover this."
             if absent:
                 problem += f" Nothing in them mentions: {', '.join(absent)}."
-            return self._give_up(question, Result(False, problems=[problem], trace=trace))
+            return self._give_up(
+                question,
+                Result(False, problems=[problem], trace=trace, abstained=True, missing_words=absent),
+                seen,
+                covered,
+            )
         messages = [
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": f"Runbook sections:\n\n{context}\n\nQuestion: {question}"},
@@ -205,13 +221,18 @@ class Agent:
                 continue
             if text.startswith(NOT_FOUND):
                 return self._give_up(
-                    question, Result(False, problems=["The runbooks don't cover this."], trace=trace)
+                    question,
+                    Result(False, problems=["The runbooks don't cover this."], trace=trace),
+                    seen,
+                    covered,
                 )
             verdict = check(text, seen)
             if verdict.ok:
-                return Result(True, text, [seen[c] for c in verdict.cited], trace=trace)
+                return Result(True, text, [seen[c] for c in verdict.cited], trace=trace, coverage=covered)
             if retried:
-                return self._give_up(question, Result(False, problems=verdict.problems, trace=trace))
+                return self._give_up(
+                    question, Result(False, problems=verdict.problems, trace=trace), seen, covered
+                )
             retried = True
             messages.append({"role": "assistant", "content": text})
             messages.append(
@@ -223,5 +244,8 @@ class Agent:
                 }
             )
         return self._give_up(
-            question, Result(False, problems=["Ran out of steps before answering."], trace=trace)
+            question,
+            Result(False, problems=["Ran out of steps before answering."], trace=trace),
+            seen,
+            covered,
         )
